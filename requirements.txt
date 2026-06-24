@@ -1,0 +1,18 @@
+# MCTool dependencies
+# ====================
+# Core GUI
+PySide6>=6.5.0
+
+# Serial transport
+pyserial>=3.5
+
+# CAN transport (optional – install only if using CAN adapter)
+# python-can>=4.0.0
+# For PEAK USB-CAN on Windows: pip install python-can[pcan]
+# For PEAK USB-CAN on Linux:   load peak_usb kernel module, then pip install python-can
+
+# Real-time plotting (future Plotter tab)
+pyqtgraph>=0.13.0
+
+# Optional: faster numpy operations for plotter
+numpy>=1.24.0
