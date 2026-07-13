@@ -1,11 +1,5 @@
 """
-Parameter Panel — redesigned
-=============================
-Fixes:
- - Parametre prikazuje ODMAH iz JSON (defaulti su prazan '-')
- - Čitanje sa uređaja pokreće se tek nakon connecta (auto ili F5)
- - Edit radi ispravno
- - Bolja vizualna hijerarhija
+Parameter Panel — clean rewrite
 """
 from __future__ import annotations
 from PySide6.QtCore import Qt, Signal
@@ -17,20 +11,11 @@ from PySide6.QtWidgets import (
 from core.parameter_model import ParameterStore
 from gui.parameter_model_qt import ParameterDelegate, ParameterTableModel
 
-
-CATEGORY_ICONS = {
-    "Motor":              "⚙",
-    "Encoder":            "📡",
-    "Mechanical":         "🔩",
-    "Power":              "⚡",
-    "Thermal":            "🌡",
-    "Communication":      "📶",
-    "Limits":             "⛔",
-    "CurrentController":  "🔄",
-    "TorqueController":   "💪",
-    "VelocityController": "🚀",
-    "PositionController": "🎯",
-    "Feedforward":        "➕",
+ICONS = {
+    "Motor":"⚙", "Encoder":"📡", "Mechanical":"🔩",
+    "Power":"⚡", "Thermal":"🌡", "Communication":"📶",
+    "Limits":"⛔", "CurrentController":"🔄", "TorqueController":"💪",
+    "VelocityController":"🚀", "PositionController":"🎯", "Feedforward":"➕",
 }
 
 
@@ -48,51 +33,49 @@ class ParameterPanel(QWidget):
         root.setSpacing(0)
         root.setContentsMargins(0, 0, 0, 0)
 
-        # ── Toolbar ──────────────────────────────────────────────
-        toolbar = QWidget()
-        toolbar.setObjectName("paramToolbar")
-        tb = QHBoxLayout(toolbar)
-        tb.setContentsMargins(8, 6, 8, 6)
-        tb.setSpacing(8)
+        # Toolbar
+        tb_widget = QWidget(); tb_widget.setObjectName("paramToolbar")
+        tb = QHBoxLayout(tb_widget)
+        tb.setContentsMargins(10, 7, 10, 7); tb.setSpacing(8)
 
-        self._search_box = QLineEdit()
-        self._search_box.setPlaceholderText("  Search parameters…")
-        self._search_box.setClearButtonEnabled(True)
-        self._search_box.textChanged.connect(self._on_search)
-        self._search_box.setMinimumWidth(220)
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("  🔍  Search parameters…")
+        self._search.setClearButtonEnabled(True)
+        self._search.textChanged.connect(self._on_search)
+        self._search.setMinimumWidth(240)
 
-        self._refresh_btn = QPushButton("⟳  Read All")
-        self._refresh_btn.setObjectName("primaryBtn")
-        self._refresh_btn.setEnabled(False)
-        self._refresh_btn.setToolTip("Read all parameters from device (F5)")
-        self._refresh_btn.clicked.connect(self.refresh_requested)
+        self._read_btn = QPushButton("⟳  Read All")
+        self._read_btn.setObjectName("primaryBtn")
+        self._read_btn.setEnabled(False)
+        self._read_btn.setToolTip("Read all parameters from device (F5)")
+        self._read_btn.clicked.connect(self.refresh_requested)
 
         self._progress = QProgressBar()
-        self._progress.setMaximumWidth(160)
+        self._progress.setMaximumWidth(180)
         self._progress.setMinimumHeight(18)
+        self._progress.setTextVisible(False)
         self._progress.hide()
 
-        self._status_label = QLabel("Not connected")
-        self._status_label.setObjectName("statusLabel")
-        self._status_label.setStyleSheet("color:#6C7086; font-size:12px;")
+        self._status = QLabel("Connect to device to read values")
+        self._status.setStyleSheet("color:#585B70; font-size:12px;")
 
-        tb.addWidget(self._search_box)
-        tb.addWidget(self._refresh_btn)
+        tb.addWidget(self._search)
+        tb.addWidget(self._read_btn)
         tb.addWidget(self._progress)
-        tb.addWidget(self._status_label)
+        tb.addWidget(self._status)
         tb.addStretch()
-        root.addWidget(toolbar)
+        root.addWidget(tb_widget)
 
-        # ── Splitter: category list | table ──────────────────────
+        # Splitter
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
 
         # Category list
-        self._cat_list = QListWidget()
-        self._cat_list.setObjectName("categoryList")
-        self._cat_list.setFixedWidth(190)
-        self._cat_list.currentRowChanged.connect(self._on_category)
-        splitter.addWidget(self._cat_list)
+        self._cats = QListWidget()
+        self._cats.setObjectName("categoryList")
+        self._cats.setFixedWidth(195)
+        self._cats.currentRowChanged.connect(self._on_cat)
+        splitter.addWidget(self._cats)
 
         # Table
         self._model = ParameterTableModel(self._store)
@@ -104,11 +87,14 @@ class ParameterPanel(QWidget):
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self._table.setAlternatingRowColors(True)
         self._table.setEditTriggers(
-            QAbstractItemView.DoubleClicked | QAbstractItemView.SelectedClicked
+            QAbstractItemView.DoubleClicked |
+            QAbstractItemView.SelectedClicked |
+            QAbstractItemView.AnyKeyPressed
         )
-        self._table.verticalHeader().setDefaultSectionSize(28)
+        self._table.verticalHeader().setDefaultSectionSize(30)
         self._table.verticalHeader().hide()
         self._table.setShowGrid(False)
+        self._table.setWordWrap(False)
 
         hh = self._table.horizontalHeader()
         hh.setSectionResizeMode(0, QHeaderView.ResizeToContents)
@@ -116,68 +102,66 @@ class ParameterPanel(QWidget):
         hh.setSectionResizeMode(2, QHeaderView.Interactive)
         hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         hh.setSectionResizeMode(4, QHeaderView.Stretch)
-        hh.setDefaultSectionSize(160)
+        hh.setDefaultSectionSize(170)
 
         splitter.addWidget(self._table)
-        splitter.setSizes([190, 900])
+        splitter.setSizes([195, 900])
         root.addWidget(splitter)
 
     def _populate_categories(self):
-        self._cat_list.clear()
+        self._cats.clear()
         for cat in self._store.categories():
-            count = len(self._store.parameters_in_category(cat))
-            icon = CATEGORY_ICONS.get(cat, "•")
-            item = QListWidgetItem(f"  {icon}  {cat}  ({count})")
+            n = len(self._store.parameters_in_category(cat))
+            icon = ICONS.get(cat, "•")
+            item = QListWidgetItem(f"  {icon}  {cat}  ({n})")
             item.setData(Qt.UserRole, cat)
-            self._cat_list.addItem(item)
-        if self._cat_list.count():
-            self._cat_list.setCurrentRow(0)
+            self._cats.addItem(item)
+        if self._cats.count():
+            self._cats.setCurrentRow(0)
 
-    def _on_category(self, row: int):
+    def _on_cat(self, row: int):
         if row < 0: return
-        self._search_box.clear()
-        cat = self._cat_list.item(row).data(Qt.UserRole)
+        self._search.clear()
+        cat = self._cats.item(row).data(Qt.UserRole)
         self._model.set_category(cat)
 
     def _on_search(self, text: str):
         if text.strip():
             self._model.set_filter(text)
-            self._cat_list.clearSelection()
+            self._cats.clearSelection()
         else:
-            row = self._cat_list.currentRow()
+            row = self._cats.currentRow()
             if row >= 0:
-                cat = self._cat_list.item(row).data(Qt.UserRole)
-                self._model.set_category(cat)
+                self._model.set_category(self._cats.item(row).data(Qt.UserRole))
 
-    # ── Called from main window ──────────────────────────────────
-
-    def set_connected(self, connected: bool):
-        self._refresh_btn.setEnabled(connected)
-        if not connected:
-            self._status_label.setText("Not connected")
-            self._status_label.setStyleSheet("color:#6C7086; font-size:12px;")
+    # Called from main window
+    def set_connected(self, yes: bool):
+        self._read_btn.setEnabled(yes)
+        if not yes:
+            self._status.setText("Connect to device to read values")
+            self._status.setStyleSheet("color:#585B70; font-size:12px;")
 
     def on_read_progress(self, done: int, total: int):
         self._progress.show()
         self._progress.setMaximum(total)
         self._progress.setValue(done)
-        self._status_label.setStyleSheet("color:#89B4FA; font-size:12px;")
-        self._status_label.setText(f"Reading {done}/{total}…")
+        self._status.setStyleSheet("color:#89B4FA; font-size:12px;")
+        self._status.setText(f"Reading {done}/{total}…")
 
     def on_all_read_done(self):
         self._progress.hide()
         loaded = sum(1 for pv in self._store.values.values() if pv.is_loaded)
         errors = sum(1 for pv in self._store.values.values() if pv.error)
-        msg = f"✓ {loaded} loaded"
-        if errors: msg += f"   ✗ {errors} errors"
-        self._status_label.setStyleSheet("color:#A6E3A1; font-size:12px;")
-        self._status_label.setText(msg)
+        msg = f"✓ {loaded} parameters read"
+        if errors: msg += f"   ⚠ {errors} errors"
+        self._status.setStyleSheet("color:#A6E3A1; font-size:12px;")
+        self._status.setText(msg)
 
     def on_parameter_written(self, did: int):
         defn = self._store.get_definition(did)
         if defn:
-            self._status_label.setStyleSheet("color:#A6E3A1; font-size:12px;")
-            self._status_label.setText(f"✓ {defn.name} written")
+            self._status.setStyleSheet("color:#A6E3A1; font-size:12px;")
+            self._status.setText(f"✓ {defn.name} written to device")
 
     def refresh_categories(self):
         self._populate_categories()

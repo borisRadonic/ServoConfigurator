@@ -1,11 +1,5 @@
-"""
-Connection Dialog
-=================
-Transport: Serial | CAN (PEAK) | TCP/IP (lokalni UDS server) | Mock
-"""
 from __future__ import annotations
 import logging
-from typing import Optional
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QComboBox, QDialog, QDialogButtonBox, QFormLayout,
@@ -17,214 +11,134 @@ from transport.tcp_transport import TCPTransport
 
 log = logging.getLogger(__name__)
 
-
-def _list_serial_ports():
+def _ports():
     try:
         import serial.tools.list_ports
         return [p.device for p in serial.tools.list_ports.comports()]
-    except Exception:
-        return []
-
+    except: return []
 
 class _SerialPage(QWidget):
     def __init__(self):
         super().__init__()
-        layout = QFormLayout(self)
-        layout.setSpacing(10)
-        self.port_combo = QComboBox()
-        self.port_combo.setEditable(True)
-        refresh_btn = QPushButton("⟳")
-        refresh_btn.setFixedWidth(30)
-        refresh_btn.clicked.connect(self._refresh)
-        row = QHBoxLayout()
-        row.addWidget(self.port_combo, 1)
-        row.addWidget(refresh_btn)
-        self.baud_combo = QComboBox()
+        lay = QFormLayout(self); lay.setSpacing(10)
+        self.port = QComboBox(); self.port.setEditable(True)
+        ref = QPushButton("⟳"); ref.setFixedWidth(28); ref.clicked.connect(self._refresh)
+        row = QHBoxLayout(); row.addWidget(self.port, 1); row.addWidget(ref)
+        self.baud = QComboBox()
         for b in [9600,19200,38400,57600,115200,230400,460800,921600]:
-            self.baud_combo.addItem(str(b), b)
-        self.baud_combo.setCurrentText("115200")
-        layout.addRow("Port:", row)
-        layout.addRow("Baudrate:", self.baud_combo)
+            self.baud.addItem(str(b), b)
+        self.baud.setCurrentText("115200")
+        lay.addRow("Port:", row); lay.addRow("Baudrate:", self.baud)
         self._refresh()
-
     def _refresh(self):
-        cur = self.port_combo.currentText()
-        self.port_combo.clear()
-        ports = _list_serial_ports()
-        self.port_combo.addItems(ports if ports else ["COM1", "/dev/ttyUSB0"])
-        if cur:
-            idx = self.port_combo.findText(cur)
-            if idx >= 0: self.port_combo.setCurrentIndex(idx)
-
-    def get_kwargs(self):
-        return {"port": self.port_combo.currentText(),
-                "baudrate": self.baud_combo.currentData()}
-
+        cur = self.port.currentText(); self.port.clear()
+        ps = _ports(); self.port.addItems(ps if ps else ["COM1","/dev/ttyUSB0"])
+        if cur: idx = self.port.findText(cur)
+        if cur and idx >= 0: self.port.setCurrentIndex(idx)
+    def kwargs(self): return {"port":self.port.currentText(),"baudrate":self.baud.currentData()}
 
 class _CANPage(QWidget):
     def __init__(self):
         super().__init__()
-        layout = QFormLayout(self)
-        layout.setSpacing(10)
-        self.interface_combo = QComboBox()
-        self.interface_combo.addItems(["pcan","kvaser","socketcan","vector","ixxat"])
-        self.interface_combo.currentTextChanged.connect(self._on_iface)
-        self.channel_edit = QLineEdit("PCAN_USBBUS1")
-        self.bitrate_combo = QComboBox()
-        for b in [125000,250000,500000,1000000]:
-            self.bitrate_combo.addItem(f"{b//1000} kbit/s", b)
-        self.bitrate_combo.setCurrentText("250 kbit/s")
-        # Device address (BL library: DEVICE_ADDRESS_VAL=0xA0)
-        self.device_addr_edit = QLineEdit("0xA0")
-        note = QLabel("TX=0x18DA<addr><0xF1>  RX=0x18DA<0xF1><addr>")
-        note.setStyleSheet("color:#6C7086; font-size:11px;")
-        layout.addRow("Interface:", self.interface_combo)
-        layout.addRow("Channel:", self.channel_edit)
-        layout.addRow("Bitrate:", self.bitrate_combo)
-        layout.addRow("Device Address:", self.device_addr_edit)
-        layout.addRow("", note)
-
-    def _on_iface(self, iface):
-        defaults = {"pcan":"PCAN_USBBUS1","socketcan":"can0","kvaser":"0"}
-        if iface in defaults:
-            self.channel_edit.setText(defaults[iface])
-
-    def get_kwargs(self):
-        return {
-            "interface": self.interface_combo.currentText(),
-            "channel":   self.channel_edit.text(),
-            "bitrate":   self.bitrate_combo.currentData(),
-            "device_address": int(self.device_addr_edit.text(), 0),
-        }
-
+        lay = QFormLayout(self); lay.setSpacing(10)
+        self.iface = QComboBox(); self.iface.addItems(["pcan","kvaser","socketcan","vector","ixxat"])
+        self.iface.currentTextChanged.connect(self._on_iface)
+        self.ch = QLineEdit("PCAN_USBBUS1")
+        self.br = QComboBox()
+        for b in [125000,250000,500000,1000000]: self.br.addItem(f"{b//1000} kbit/s", b)
+        self.br.setCurrentText("250 kbit/s")
+        self.addr = QLineEdit("0xA0")
+        note = QLabel("TX: 0x18DA<addr><0xF1>   RX: 0x18DA<0xF1><addr>")
+        note.setStyleSheet("color:#585B70; font-size:11px;")
+        lay.addRow("Interface:", self.iface); lay.addRow("Channel:", self.ch)
+        lay.addRow("Bitrate:", self.br); lay.addRow("Device Address:", self.addr)
+        lay.addRow("", note)
+    def _on_iface(self, v):
+        d = {"pcan":"PCAN_USBBUS1","socketcan":"can0","kvaser":"0"}
+        if v in d: self.ch.setText(d[v])
+    def kwargs(self):
+        return {"interface":self.iface.currentText(),"channel":self.ch.text(),
+                "bitrate":self.br.currentData(),"device_address":int(self.addr.text(),0)}
 
 class _TCPPage(QWidget):
     def __init__(self):
         super().__init__()
-        layout = QFormLayout(self)
-        layout.setSpacing(10)
-        self.host_edit = QLineEdit("127.0.0.1")
-        self.port_spin = QSpinBox()
-        self.port_spin.setRange(1, 65535)
-        self.port_spin.setValue(13400)
+        lay = QFormLayout(self); lay.setSpacing(10)
+        self.host = QLineEdit("127.0.0.1")
+        self.port = QSpinBox(); self.port.setRange(1,65535); self.port.setValue(13400)
         note = QLabel(
-            "Spoji se na lokalni UDS server (npr. BL library test app).\n"
-            "Server mora koristiti isti length+CRC framing kao Serial transport.\n"
+            "Lokalni UDS server (BL library test app).\n"
+            "Server mora koristiti isti length+CRC framing.\n"
             "Port 13400 = DoIP standard."
         )
-        note.setWordWrap(True)
-        note.setStyleSheet("color:#89B4FA; font-size:11px;")
-        layout.addRow("Host:", self.host_edit)
-        layout.addRow("Port:", self.port_spin)
-        layout.addRow("", note)
-
-    def get_kwargs(self):
-        return {"host": self.host_edit.text(), "port": self.port_spin.value()}
-
+        note.setWordWrap(True); note.setStyleSheet("color:#89B4FA; font-size:11px;")
+        lay.addRow("Host:", self.host); lay.addRow("Port:", self.port); lay.addRow("", note)
+    def kwargs(self): return {"host":self.host.text(),"port":self.port.value()}
 
 class _MockPage(QWidget):
     def __init__(self):
         super().__init__()
-        layout = QVBoxLayout(self)
-        label = QLabel(
-            "<b>Simulation Mode</b><br><br>"
-            "Nema hardwarea — sve RDBI vraćaju preddefinirane vrijednosti.<br>"
-            "Korisno za UI razvoj.<br><br>"
-            "<i>Za testiranje pravog protokola, koristi TCP/IP transport<br>"
-            "s lokalnom BL library test aplikacijom.</i>"
-        )
-        label.setWordWrap(True)
-        label.setAlignment(Qt.AlignCenter)
-        label.setStyleSheet("color:#888; padding:20px;")
-        layout.addWidget(label)
-
-    def get_kwargs(self):
-        return {}
-
+        lay = QVBoxLayout(self)
+        lbl = QLabel("<b>Simulation Mode</b><br><br>"
+            "Vraća preddefinirane vrijednosti bez hardwarea.<br><br>"
+            "<i>Za testiranje pravog UDS protokola koristi<br>"
+            "TCP/IP transport s BL library test aplikacijom.</i>")
+        lbl.setWordWrap(True); lbl.setAlignment(Qt.AlignCenter)
+        lbl.setStyleSheet("color:#6C7086; padding:20px;")
+        lay.addWidget(lbl)
+    def kwargs(self): return {}
 
 class ConnectionDialog(QDialog):
     connected = Signal(object)
-
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Connect to Motor Controller")
-        self.setMinimumWidth(420)
-        self.transport: Optional[AbstractTransport] = None
-        self._build_ui()
+        self.setMinimumWidth(430)
+        self.transport = None; self._build()
 
-    def _build_ui(self):
-        vbox = QVBoxLayout(self)
-        vbox.setSpacing(14)
+    def _build(self):
+        v = QVBoxLayout(self); v.setSpacing(14)
 
-        type_group = QGroupBox("Transport")
-        tl = QHBoxLayout(type_group)
-        self._type_combo = QComboBox()
-        self._type_combo.addItems([
-            "Serial (UART)",
-            "CAN (PEAK / python-can)",
-            "TCP/IP (lokalni UDS server)",
-            "Simulation (Mock)",
-        ])
-        self._type_combo.currentIndexChanged.connect(self._on_type)
-        tl.addWidget(self._type_combo)
-        vbox.addWidget(type_group)
+        tg = QGroupBox("Transport")
+        tl = QHBoxLayout(tg)
+        self._tc = QComboBox()
+        self._tc.addItems(["Serial (UART)","CAN (PEAK / python-can)",
+                            "TCP/IP (lokalni UDS server)","Simulation (Mock)"])
+        self._tc.currentIndexChanged.connect(lambda i: self._stack.setCurrentIndex(i))
+        tl.addWidget(self._tc); v.addWidget(tg)
 
-        cfg_group = QGroupBox("Configuration")
-        cl = QVBoxLayout(cfg_group)
+        cg = QGroupBox("Configuration"); cl = QVBoxLayout(cg)
         self._stack = QStackedWidget()
-        self._serial_page = _SerialPage()
-        self._can_page    = _CANPage()
-        self._tcp_page    = _TCPPage()
-        self._mock_page   = _MockPage()
-        for p in [self._serial_page, self._can_page, self._tcp_page, self._mock_page]:
-            self._stack.addWidget(p)
-        cl.addWidget(self._stack)
-        vbox.addWidget(cfg_group)
+        self._sp = _SerialPage(); self._cp = _CANPage()
+        self._tp = _TCPPage();   self._mp = _MockPage()
+        for p in [self._sp,self._cp,self._tp,self._mp]: self._stack.addWidget(p)
+        cl.addWidget(self._stack); v.addWidget(cg)
 
-        self._status = QLabel("")
-        self._status.setWordWrap(True)
-        vbox.addWidget(self._status)
+        self._status = QLabel(""); self._status.setWordWrap(True); v.addWidget(self._status)
 
-        btn_box = QDialogButtonBox()
-        self._connect_btn = btn_box.addButton("Connect", QDialogButtonBox.AcceptRole)
-        btn_box.addButton("Cancel", QDialogButtonBox.RejectRole)
-        self._connect_btn.clicked.connect(self._do_connect)
-        btn_box.rejected.connect(self.reject)
-        vbox.addWidget(btn_box)
+        bb = QDialogButtonBox()
+        self._btn = bb.addButton("Connect", QDialogButtonBox.AcceptRole)
+        bb.addButton("Cancel", QDialogButtonBox.RejectRole)
+        self._btn.clicked.connect(self._connect)
+        bb.rejected.connect(self.reject); v.addWidget(bb)
 
-    def _on_type(self, idx):
-        self._stack.setCurrentIndex(idx)
-
-    def _do_connect(self):
-        idx = self._type_combo.currentIndex()
-        self._status.setText("Connecting…")
-        self._connect_btn.setEnabled(False)
+    def _connect(self):
+        idx = self._tc.currentIndex()
+        self._status.setText("Connecting…"); self._btn.setEnabled(False)
         try:
             if idx == 0:
-                t = SerialTransport()
-                t.connect(**self._serial_page.get_kwargs())
+                t = SerialTransport(); t.connect(**self._sp.kwargs())
             elif idx == 1:
-                kw = self._can_page.get_kwargs()
-                dev_addr = kw.pop("device_address", 0xA0)
-                t = CANTransport(device_address=dev_addr)
-                t.connect(**kw)
+                kw = self._cp.kwargs(); da = kw.pop("device_address", 0xA0)
+                t = CANTransport(device_address=da); t.connect(**kw)
             elif idx == 2:
-                t = TCPTransport()
-                t.connect(**self._tcp_page.get_kwargs())
+                t = TCPTransport(); t.connect(**self._tp.kwargs())
             else:
-                t = MockTransport()
-                t.connect()
-
-            self.transport = t
-            self.connected.emit(t)
+                t = MockTransport(); t.connect()
+            self.transport = t; self.connected.emit(t)
             self._status.setStyleSheet("color:#A6E3A1;")
             self._status.setText(f"✓ Connected via {t.name}")
             self.accept()
-        except TransportError as e:
-            self._status.setStyleSheet("color:#F38BA8;")
-            self._status.setText(f"✗ {e}")
-            self._connect_btn.setEnabled(True)
         except Exception as e:
             self._status.setStyleSheet("color:#F38BA8;")
-            self._status.setText(f"✗ {e}")
-            self._connect_btn.setEnabled(True)
+            self._status.setText(f"✗ {e}"); self._btn.setEnabled(True)
