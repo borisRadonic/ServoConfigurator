@@ -96,36 +96,34 @@ class _CANPage(QWidget):
         self.bitrate_combo = QComboBox()
         for b in [125000, 250000, 500000, 1000000]:
             self.bitrate_combo.addItem(f"{b//1000} kbit/s", b)
-        self.bitrate_combo.setCurrentText("500 kbit/s")
+        self.bitrate_combo.setCurrentText("250 kbit/s")
 
-        self.tx_id_edit = QLineEdit("0x7E0")
-        self.rx_id_edit = QLineEdit("0x7E8")
+        # Device_Address from NvStore/EEPROM (VinBT-259/260)
+        # Default 0xA0 = DEVICE_ADDRESS_VAL (BL library)
+        # TX = 0x18DA<device_addr><0xF1>  e.g. 0x18DAA0F1
+        # RX = 0x18DA<0xF1><device_addr>  e.g. 0x18DAF1A0
+        self.device_addr_edit = QLineEdit("0xA0")
 
         layout.addRow("Interface:", self.interface_combo)
         layout.addRow("Channel:", self.channel_edit)
         layout.addRow("Bitrate:", self.bitrate_combo)
-        layout.addRow("TX CAN ID:", self.tx_id_edit)
-        layout.addRow("RX CAN ID:", self.rx_id_edit)
+        layout.addRow("Device Address:", self.device_addr_edit)
 
     def _on_interface_changed(self, iface: str):
         defaults = {
-            "pcan": ("PCAN_USBBUS1", "0x7E0", "0x7E8"),
-            "socketcan": ("can0", "0x7E0", "0x7E8"),
-            "kvaser": ("0", "0x7E0", "0x7E8"),
+            "pcan":      "PCAN_USBBUS1",
+            "socketcan": "can0",
+            "kvaser":    "0",
         }
         if iface in defaults:
-            ch, tx, rx = defaults[iface]
-            self.channel_edit.setText(ch)
-            self.tx_id_edit.setText(tx)
-            self.rx_id_edit.setText(rx)
+            self.channel_edit.setText(defaults[iface])
 
     def get_kwargs(self) -> dict:
         return {
             "interface": self.interface_combo.currentText(),
             "channel": self.channel_edit.text(),
             "bitrate": self.bitrate_combo.currentData(),
-            "tx_id": int(self.tx_id_edit.text(), 0),
-            "rx_id": int(self.rx_id_edit.text(), 0),
+            "device_address": int(self.device_addr_edit.text(), 0),
         }
 
 
@@ -203,9 +201,8 @@ class ConnectionDialog(QDialog):
                 transport.connect(**kwargs)
             elif idx == 1:  # CAN
                 kwargs = self._can_page.get_kwargs()
-                tx_id = kwargs.pop("tx_id", 0x7E0)
-                rx_id = kwargs.pop("rx_id", 0x7E8)
-                transport = CANTransport(tx_id=tx_id, rx_id=rx_id)
+                device_address = kwargs.pop("device_address", 0xA0)
+                transport = CANTransport(device_address=device_address)
                 transport.connect(**kwargs)
             else:  # Mock
                 transport = MockTransport()

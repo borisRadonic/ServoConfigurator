@@ -8,12 +8,12 @@ Implements UDS-based firmware download sequence:
     3. 0x27 0x02  SecurityAccess ? SendKey
     4. 0x31 0x01  RoutineControl ? Start  (erase flash)
     5. 0x34       RequestDownload          (announce transfer)
-    6. 0x36 …     TransferData             (blocks)
+    6. 0x36 ï¿½     TransferData             (blocks)
     7. 0x37       RequestTransferExit      (finalize)
     8. 0x31 0x01  RoutineControl ? Start  (verify checksum/CRC)
     9. 0x11 0x01  ECUReset ? HardReset
 
-Intel HEX parsing is done internally — no external library required.
+Intel HEX parsing is done internally ï¿½ no external library required.
 Supports HEX record types 00 (Data), 01 (EOF), 02 (Extended Segment),
 03 (Start Segment), 04 (Extended Linear Address), 05 (Start Linear).
 
@@ -65,7 +65,7 @@ class IntelHexError(Exception):
 class IntelHexParser:
     """
     Parses Intel HEX files into a list of contiguous HexSegments.
-    Supports record types 00–05.
+    Supports record types 00ï¿½05.
     """
 
     def parse(self, path: str | Path) -> List[HexSegment]:
@@ -121,7 +121,7 @@ class IntelHexParser:
                     upper_address = ((data[0] << 8) | data[1]) << 16
                     current = None
 
-                elif rec_type in (0x03, 0x05):  # Start addresses – ignore
+                elif rec_type in (0x03, 0x05):  # Start addresses ï¿½ ignore
                     pass
 
                 else:
@@ -154,19 +154,27 @@ class IntelHexParser:
 
 def default_key_from_seed(seed: bytes, level: int = 0x01) -> bytes:
     """
-    Default seed?key algorithm placeholder.
-    Replace with your actual algorithm (XOR mask, AES, custom, …).
+    Security Access seed -> key derivation.
 
-    Many STM32 bootloaders use a simple XOR or bit-rotation scheme.
-    Example (XOR with constant):
-        key = seed XOR 0xDEADBEEF  (4-byte seed)
+    BL library (l3/security_access.hpp):
+        key = HMAC-SHA256(per_level_secret, seed)[0:4]
+
+    Levels: 0x01=User, 0x02=Manufacturer, 0x03=Developer
+    Firmware update needs Manufacturer (0x02).
+
+    !! Replace secrets with real provisioned values from your HSM !!
     """
-    if len(seed) == 4:
-        s = struct.unpack(">I", seed)[0]
-        k = (s ^ 0xDEADBEEF) & 0xFFFFFFFF  # ? replace with real algorithm
-        return struct.pack(">I", k)
-    # Fallback: XOR each byte with 0x5A
-    return bytes(b ^ 0x5A for b in seed)
+    import hmac
+    import hashlib
+    # Per-level HMAC secrets â€” REPLACE with real OTP provisioned values
+    secrets = {
+        0x01: bytes(32),   # User         â€” placeholder (32 zero bytes)
+        0x02: bytes(32),   # Manufacturer â€” placeholder (32 zero bytes)
+        0x03: bytes(32),   # Developer    â€” placeholder (32 zero bytes)
+    }
+    secret = secrets.get(level, bytes(32))
+    digest = hmac.new(secret, seed, hashlib.sha256).digest()
+    return digest[:4]  # truncated to 4 bytes per BL library
 
 
 # ------------------------------------------------------------------ #
@@ -174,8 +182,10 @@ def default_key_from_seed(seed: bytes, level: int = 0x01) -> bytes:
 # ------------------------------------------------------------------ #
 
 class RoutineID:
-    ERASE_FLASH     = 0xFF00  # Start before download
-    CHECK_INTEGRITY = 0xFF01  # Verify after download
+    ERASE_FLASH              = 0xFF00  # EraseMemory  (l4/uds_service_table.hpp)
+    CHECK_MEMORY             = 0xFF04  # CheckMemory  (l4/uds_service_table.hpp)
+    ERASE_OPTION_APPLICATION = 0x11    # VinBT-355/500: erase Application
+    ERASE_OPTION_CBL         = 0xAA    # VinBT-355/500: erase CustomerBootloader
 
 
 # ------------------------------------------------------------------ #
@@ -213,7 +223,7 @@ class _UpdateWorker(QObject):
         try:
             self._execute()
         except UDSNegativeResponse as e:
-            msg = f"UDS error: NRC 0x{e.nrc:02X} – {NRC.description(e.nrc)}"
+            msg = f"UDS error: NRC 0x{e.nrc:02X} ï¿½ {NRC.description(e.nrc)}"
             log.error(msg)
             self.finished.emit(False, msg)
         except TransportError as e:
@@ -229,28 +239,29 @@ class _UpdateWorker(QObject):
         total_bytes = len(self._flat_data)
 
         # -- Step 1: Programming session -----------------------------
-        self._report(0, "Switching to programming session…")
+        self._report(0, "Switching to programming sessionï¿½")
         self._send(self._codec.encode_diagnostic_session_control(
             SessionType.PROGRAMMING))
 
         # -- Step 2-3: Security Access --------------------------------
-        self._report(2, "Security Access: requesting seed…")
+        self._report(2, "Security Access: requesting seedï¿½")
         resp = self._send(self._codec.encode_security_access_request_seed(0x01))
         seed = resp.get("seed", b"")
         if not seed:
             raise TransportError("ECU returned empty seed")
 
         key = self._key_fn(seed, 0x01)
-        self._report(4, "Security Access: sending key…")
+        self._report(4, "Security Access: sending keyï¿½")
         self._send(self._codec.encode_security_access_send_key(0x01, key))
 
         # -- Step 4: Erase flash (RoutineControl 0xFF00) --------------
-        self._report(6, f"Erasing flash at 0x{self._base_addr:08X}…")
-        erase_data = struct.pack(">II", self._base_addr, total_bytes)
+        self._report(6, f"Erasing flash at 0x{self._base_addr:08X}ï¿½")
+        # Option byte: 0x11=Application, 0xAA=CBL (VinBT-355/500)
+        erase_data = struct.pack(">II", self._base_addr, total_bytes) + bytes([RoutineID.ERASE_OPTION_APPLICATION])
         self._send_routine(RoutineID.ERASE_FLASH, erase_data, timeout=15.0)
 
         # -- Step 5: RequestDownload ----------------------------------
-        self._report(10, f"Requesting download ({total_bytes} bytes)…")
+        self._report(10, f"Requesting download ({total_bytes} bytes)ï¿½")
         rd_req = self._encode_request_download(
             address=self._base_addr,
             length=total_bytes,
@@ -263,7 +274,7 @@ class _UpdateWorker(QObject):
         log.info("Download accepted. Negotiated block size: %d bytes", block_size)
 
         # -- Step 6: TransferData -------------------------------------
-        self._report(12, "Transferring firmware…")
+        self._report(12, "Transferring firmwareï¿½")
         offset = 0
         block_seq = 1
         while offset < total_bytes:
@@ -280,24 +291,24 @@ class _UpdateWorker(QObject):
 
             percent = 12 + int(offset / total_bytes * 78)  # 12% ? 90%
             self._report(percent,
-                         f"Transferring… {offset}/{total_bytes} bytes "
+                         f"Transferringï¿½ {offset}/{total_bytes} bytes "
                          f"({offset*100//total_bytes}%)")
 
         # -- Step 7: RequestTransferExit ------------------------------
-        self._report(91, "Finalizing transfer…")
+        self._report(91, "Finalizing transferï¿½")
         self._raw_send(bytes([ServiceID.REQUEST_TRANSFER_EXIT]), timeout=5.0)
 
         # -- Step 8: Verify integrity (RoutineControl 0xFF01) ---------
-        self._report(93, "Verifying integrity…")
+        self._report(93, "Verifying integrityï¿½")
         verify_data = struct.pack(">II", self._base_addr, total_bytes)
-        self._send_routine(RoutineID.CHECK_INTEGRITY, verify_data, timeout=10.0)
+        self._send_routine(RoutineID.CHECK_MEMORY, verify_data, timeout=10.0)
 
         # -- Step 9: ECU Reset ----------------------------------------
-        self._report(98, "Resetting ECU…")
+        self._report(98, "Resetting ECUï¿½")
         try:
             self._raw_send(self._codec.encode_ecu_reset(ResetType.HARD_RESET), timeout=2.0)
         except TransportError:
-            pass  # ECU may reset before sending response – that's OK
+            pass  # ECU may reset before sending response ï¿½ that's OK
 
         self._report(100, "Firmware update complete ?")
         self.finished.emit(True, "Firmware updated successfully")
@@ -330,7 +341,7 @@ class _UpdateWorker(QObject):
                                   compression: int = 0,
                                   encrypting: int = 0) -> bytes:
         """
-        ISO 14229-1 §14.3 RequestDownload (0x34)
+        ISO 14229-1 ï¿½14.3 RequestDownload (0x34)
         dataFormatIdentifier:  [comp(4) | encr(4)]
         addressAndLengthFormatIdentifier: [memLen(4) | memAddr(4)]
         Both address and length encoded as 4 bytes (big-endian).

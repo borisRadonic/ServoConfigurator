@@ -246,14 +246,22 @@ class CANTransport(AbstractTransport):
     UDS payloads up to ~4095 bytes.
     """
 
-    # CAN IDs – adjust to match your device
-    DEFAULT_TX_ID = 0x7E0  # tester → ECU (physical)
-    DEFAULT_RX_ID = 0x7E8  # ECU → tester
+    # CAN IDs — 29-bit extended, ISO 15765-2 / SAE J1939
+    # Physical: 0x18DA<TA><SA>  (VinBT-263)
+    # device_address=0xA0 (DEVICE_ADDRESS_VAL, VinBT-259/260)
+    # tester_address=0xF1 (standard OBD tester SA)
+    TESTER_ADDRESS = 0xF1
 
-    def __init__(self, tx_id: int = DEFAULT_TX_ID, rx_id: int = DEFAULT_RX_ID):
+    def __init__(self, device_address: int = 0xA0,
+                 tester_address: int = TESTER_ADDRESS):
         super().__init__()
-        self._tx_id = tx_id
-        self._rx_id = rx_id
+        self._device_addr = device_address
+        self._tester_addr = tester_address
+        self._tx_id   = 0x18DA0000 | ((device_address & 0xFF) << 8) | (tester_address & 0xFF)
+        self._rx_id   = 0x18DA0000 | ((tester_address & 0xFF) << 8) | (device_address & 0xFF)
+        self._func_id = 0x18DB3300 | (tester_address & 0xFF)
+        log.info("CAN IDs: TX=0x%08X RX=0x%08X FUNC=0x%08X",
+                 self._tx_id, self._rx_id, self._func_id)
         self._bus = None
         self._running = False
         self._rx_thread: Optional[threading.Thread] = None
@@ -269,7 +277,7 @@ class CANTransport(AbstractTransport):
         return "CAN"
 
     def connect(self, interface: str = "pcan", channel: str = "PCAN_USBBUS1",
-                bitrate: int = 500000, **kwargs) -> None:
+                bitrate: int = 250000, **kwargs) -> None:
         try:
             import can
         except ImportError:
@@ -284,7 +292,8 @@ class CANTransport(AbstractTransport):
             self._running = True
             self._rx_thread = threading.Thread(target=self._rx_loop, daemon=True)
             self._rx_thread.start()
-            log.info("CAN connected: %s %s @ %d bps", interface, channel, bitrate)
+            log.info("CAN connected: %s %s @ %d bps  TX=0x%08X RX=0x%08X",
+                     interface, channel, bitrate, self._tx_id, self._rx_id)
         except Exception as e:
             raise TransportError(f"Failed to open CAN {interface}/{channel}: {e}") from e
 
@@ -305,9 +314,22 @@ class CANTransport(AbstractTransport):
         fc_data = bytearray(8)
         fc_data[0] = 0x30  # FC, ContinueToSend
         fc_data[1] = 0x00  # block size = 0 (unlimited)
-        fc_data[2] = 0x0A  # separation time = 10ms
-        msg = can.Message(arbitration_id=self._tx_id, data=fc_data, is_extended_id=False)
+        fc_data[2] = 0x00  # STmin = 0ms
+        msg = can.Message(arbitration_id=self._tx_id, data=fc_data, is_extended_id=True)
         self._bus.send(msg)
+
+    def send_functional(self, payload: bytes) -> None:
+        """Broadcast via functional address 0x18DB33<SA> (VinBT-264)."""
+        if not self.is_connected():
+            raise TransportError("CAN not connected")
+        import can
+        if len(payload) <= 7:
+            data = bytearray(8)
+            data[0] = len(payload)
+            data[1:1+len(payload)] = payload
+            msg = can.Message(arbitration_id=self._func_id, data=data, is_extended_id=True)
+            with self._lock:
+                self._bus.send(msg)
 
     def send(self, payload: bytes) -> None:
         if not self.is_connected():
@@ -320,7 +342,7 @@ class CANTransport(AbstractTransport):
                 data = bytearray(8)
                 data[0] = len(payload)  # SF, length in nibble 0
                 data[1 : 1 + len(payload)] = payload
-                msg = can.Message(arbitration_id=self._tx_id, data=data, is_extended_id=False)
+                msg = can.Message(arbitration_id=self._tx_id, data=data, is_extended_id=True)
                 self._bus.send(msg)
             else:
                 # Multi-Frame: First Frame
@@ -329,7 +351,7 @@ class CANTransport(AbstractTransport):
                 data[0] = 0x10 | ((total >> 8) & 0x0F)
                 data[1] = total & 0xFF
                 data[2:8] = payload[0:6]
-                msg = can.Message(arbitration_id=self._tx_id, data=data, is_extended_id=False)
+                msg = can.Message(arbitration_id=self._tx_id, data=data, is_extended_id=True)
                 self._bus.send(msg)
 
                 # Wait for Flow Control
@@ -343,7 +365,7 @@ class CANTransport(AbstractTransport):
                     data = bytearray(8)
                     data[0] = 0x20 | (seq & 0x0F)
                     data[1 : 1 + len(chunk)] = chunk
-                    msg = can.Message(arbitration_id=self._tx_id, data=data, is_extended_id=False)
+                    msg = can.Message(arbitration_id=self._tx_id, data=data, is_extended_id=True)
                     self._bus.send(msg)
                     offset += 7
                     seq = (seq + 1) & 0x0F
