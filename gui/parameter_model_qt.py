@@ -1,73 +1,41 @@
 """
 Parameter Table Model + Delegate
 =================================
-QAbstractTableModel backed by ParameterStore.
-Custom delegate provides spin boxes, combos, and check boxes for editing.
+Fixes:
+ - setModelData now correctly triggers store.request_write
+ - UserRole returns DID on ALL columns (not just value column)
+ - Delegate createEditor works for bool as QComboBox
 """
 from __future__ import annotations
-
 from typing import Any, Optional
 
-from PySide6.QtCore import (
-    QAbstractTableModel,
-    QModelIndex,
-    Qt,
-    Signal,
-)
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
-    QCheckBox,
-    QComboBox,
-    QDoubleSpinBox,
-    QSpinBox,
-    QStyledItemDelegate,
-    QStyleOptionViewItem,
-    QWidget,
+    QComboBox, QDoubleSpinBox, QSpinBox,
+    QStyledItemDelegate, QStyleOptionViewItem, QWidget,
 )
-
 from core.parameter_model import ParameterStore, ParameterType
 
-
-# ------------------------------------------------------------------ #
-#  Column indices                                                      #
-# ------------------------------------------------------------------ #
-
-COL_DID   = 0
-COL_NAME  = 1
-COL_VALUE = 2
-COL_UNIT  = 3
-COL_DESC  = 4
-NUM_COLS  = 5
-
+COL_DID=0; COL_NAME=1; COL_VALUE=2; COL_UNIT=3; COL_DESC=4; NUM_COLS=5
 HEADERS = ["DID", "Parameter", "Value", "Unit", "Description"]
 
-# Colours (will be overridden by stylesheet in dark theme)
-COLOR_DIRTY   = QColor("#FF9800")  # orange – written, pending confirm
-COLOR_ERROR   = QColor("#F44336")  # red
-COLOR_LOADED  = QColor("#4CAF50")  # green
-COLOR_UNLOADED = QColor("#9E9E9E") # grey
+COLOR_DIRTY   = QColor("#FF9800")
+COLOR_ERROR   = QColor("#F44336")
+COLOR_LOADED  = QColor("#A6E3A1")
+COLOR_UNLOADED= QColor("#6C7086")
 
 
 class ParameterTableModel(QAbstractTableModel):
-    """
-    Displays parameters for ONE category.
-    Filters are applied by calling set_category().
-    """
-
-    write_requested = Signal(int, object)  # did, value
-
     def __init__(self, store: ParameterStore, parent=None):
         super().__init__(parent)
         self._store = store
         self._dids: list[int] = []
-
-        # React to external updates
-        store.parameter_changed.connect(self._on_parameter_changed)
+        store.parameter_changed.connect(self._on_changed)
 
     def set_category(self, category: str) -> None:
         self.beginResetModel()
-        defns = self._store.parameters_in_category(category)
-        self._dids = [d.did for d in defns]
+        self._dids = [d.did for d in self._store.parameters_in_category(category)]
         self.endResetModel()
 
     def set_filter(self, text: str) -> None:
@@ -79,49 +47,43 @@ class ParameterTableModel(QAbstractTableModel):
         ]
         self.endResetModel()
 
-    # ── Qt model interface ──────────────────────────────────────────
+    def rowCount(self, parent=QModelIndex()): return len(self._dids)
+    def columnCount(self, parent=QModelIndex()): return NUM_COLS
 
-    def rowCount(self, parent=QModelIndex()) -> int:
-        return len(self._dids)
-
-    def columnCount(self, parent=QModelIndex()) -> int:
-        return NUM_COLS
-
-    def headerData(self, section: int, orientation: Qt.Orientation, role=Qt.DisplayRole):
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
             return HEADERS[section]
-        return None
 
-    def flags(self, index: QModelIndex) -> Qt.ItemFlags:
+    def flags(self, index: QModelIndex):
         base = Qt.ItemIsEnabled | Qt.ItemIsSelectable
         if index.column() == COL_VALUE:
-            did = self._dids[index.row()]
-            defn = self._store.get_definition(did)
-            if defn and not defn.read_only:
-                return base | Qt.ItemIsEditable
+            did = self._dids[index.row()] if index.row() < len(self._dids) else None
+            if did is not None:
+                defn = self._store.get_definition(did)
+                if defn and not defn.read_only:
+                    return base | Qt.ItemIsEditable
         return base
 
     def data(self, index: QModelIndex, role=Qt.DisplayRole):
-        if not index.isValid():
+        if not index.isValid() or index.row() >= len(self._dids):
             return None
         did = self._dids[index.row()]
         defn = self._store.get_definition(did)
-        pv = self._store.get_value(did)
-        col = index.column()
+        pv   = self._store.get_value(did)
+        col  = index.column()
+
+        if role == Qt.UserRole:
+            return did  # always return DID regardless of column
 
         if role == Qt.DisplayRole:
-            if col == COL_DID:
-                return defn.did_str
-            if col == COL_NAME:
-                return defn.name
+            if col == COL_DID:   return defn.did_str
+            if col == COL_NAME:  return defn.name
+            if col == COL_UNIT:  return defn.unit
+            if col == COL_DESC:  return defn.description
             if col == COL_VALUE:
-                if pv and pv.error:
-                    return f"ERR: {pv.error}"
-                return pv.display_value() if pv else "–"
-            if col == COL_UNIT:
-                return defn.unit
-            if col == COL_DESC:
-                return defn.description
+                if pv and pv.error:    return f"ERR: {pv.error}"
+                if pv and pv.is_loaded: return pv.display_value()
+                return "–"
 
         if role == Qt.EditRole and col == COL_VALUE:
             if pv and pv.is_loaded:
@@ -130,58 +92,45 @@ class ParameterTableModel(QAbstractTableModel):
 
         if role == Qt.ForegroundRole and col == COL_VALUE:
             if pv:
-                if pv.error:
-                    return COLOR_ERROR
-                if pv.is_dirty:
-                    return COLOR_DIRTY
-                if pv.is_loaded:
-                    return COLOR_LOADED
+                if pv.error:     return COLOR_ERROR
+                if pv.is_dirty:  return COLOR_DIRTY
+                if pv.is_loaded: return COLOR_LOADED
             return COLOR_UNLOADED
 
         if role == Qt.FontRole and col == COL_NAME:
-            f = QFont()
-            f.setFamily("Consolas, Monospace")
+            f = QFont("Consolas, Monospace")
             return f
 
         if role == Qt.ToolTipRole:
             tip = defn.description
-            if pv and pv.error:
-                tip += f"\n\nError: {pv.error}"
+            if pv and pv.error: tip += f"\n\nError: {pv.error}"
             if defn.min_val is not None:
                 tip += f"\nRange: {defn.min_val} … {defn.max_val}"
+                tip += f"\nStep: {defn.step}"
             return tip
-
-        if role == Qt.UserRole:
-            return did  # raw DID for delegates
 
         return None
 
     def setData(self, index: QModelIndex, value: Any, role=Qt.EditRole) -> bool:
         if role != Qt.EditRole or index.column() != COL_VALUE:
             return False
+        if index.row() >= len(self._dids):
+            return False
         did = self._dids[index.row()]
+        # This triggers the write to device via store signal
         self._store.request_write(did, value)
         self.dataChanged.emit(index, index, [Qt.DisplayRole, Qt.ForegroundRole])
         return True
 
-    def _on_parameter_changed(self, did: int) -> None:
+    def _on_changed(self, did: int) -> None:
         if did not in self._dids:
             return
         row = self._dids.index(did)
         tl = self.index(row, COL_VALUE)
-        br = self.index(row, COL_VALUE)
-        self.dataChanged.emit(tl, br, [Qt.DisplayRole, Qt.ForegroundRole])
+        self.dataChanged.emit(tl, tl, [Qt.DisplayRole, Qt.ForegroundRole])
 
-
-# ------------------------------------------------------------------ #
-#  Delegate                                                            #
-# ------------------------------------------------------------------ #
 
 class ParameterDelegate(QStyledItemDelegate):
-    """
-    Creates appropriate editors based on parameter type.
-    """
-
     def __init__(self, store: ParameterStore, parent=None):
         super().__init__(parent)
         self._store = store
@@ -200,7 +149,7 @@ class ParameterDelegate(QStyledItemDelegate):
         if t == ParameterType.BOOL:
             combo = QComboBox(parent)
             combo.addItem("False", False)
-            combo.addItem("True", True)
+            combo.addItem("True",  True)
             return combo
 
         if t == ParameterType.ENUM:
@@ -211,32 +160,23 @@ class ParameterDelegate(QStyledItemDelegate):
 
         if t == ParameterType.FLOAT:
             sb = QDoubleSpinBox(parent)
-            if defn.min_val is not None:
-                sb.setMinimum(defn.min_val)
-            else:
-                sb.setMinimum(-1e9)
-            if defn.max_val is not None:
-                sb.setMaximum(defn.max_val)
-            else:
-                sb.setMaximum(1e9)
+            sb.setMinimum(defn.min_val if defn.min_val is not None else -1e9)
+            sb.setMaximum(defn.max_val if defn.max_val is not None else  1e9)
             if defn.step:
                 sb.setSingleStep(defn.step)
-                # determine decimals from step
                 s = str(defn.step)
-                if "." in s:
-                    decimals = max(2, len(s.rstrip("0").split(".")[-1]))
-                else:
-                    decimals = 2
-                sb.setDecimals(min(decimals, 8))
+                decimals = len(s.rstrip("0").split(".")[-1]) if "." in s else 2
+                sb.setDecimals(min(max(decimals, 2), 8))
             else:
                 sb.setDecimals(6)
-            sb.setSuffix(f"  {defn.unit}" if defn.unit and defn.unit != "-" else "")
+            if defn.unit and defn.unit != "-":
+                sb.setSuffix(f"  {defn.unit}")
             return sb
 
-        # Integer types
+        # Integer / enum fallback
         sb = QSpinBox(parent)
-        lo = int(defn.min_val) if defn.min_val is not None else -2**30
-        hi = int(defn.max_val) if defn.max_val is not None else 2**30
+        lo = int(defn.min_val) if defn.min_val is not None else -(2**31)
+        hi = int(defn.max_val) if defn.max_val is not None else  (2**31 - 1)
         sb.setMinimum(max(lo, -(2**31)))
         sb.setMaximum(min(hi,   2**31 - 1))
         if defn.step:
@@ -245,18 +185,20 @@ class ParameterDelegate(QStyledItemDelegate):
 
     def setEditorData(self, editor: QWidget, index: QModelIndex) -> None:
         did = index.data(Qt.UserRole)
+        if did is None:
+            return
         defn = self._store.get_definition(did)
-        pv = self._store.get_value(did)
-        if not defn or not pv or not pv.is_loaded:
+        pv   = self._store.get_value(did)
+        if not defn or not pv or not pv.is_loaded or pv.value is None:
             return
 
         val = pv.value
-        t = defn.param_type
+        t   = defn.param_type
 
         if isinstance(editor, QComboBox):
             if t == ParameterType.BOOL:
                 editor.setCurrentIndex(1 if val else 0)
-            elif t == ParameterType.ENUM:
+            else:
                 idx = editor.findData(int(val))
                 if idx >= 0:
                     editor.setCurrentIndex(idx)
@@ -265,14 +207,13 @@ class ParameterDelegate(QStyledItemDelegate):
         elif isinstance(editor, QSpinBox):
             editor.setValue(int(val))
 
-    def setModelData(self, editor: QWidget, model: QAbstractTableModel,
-                     index: QModelIndex) -> None:
+    def setModelData(self, editor: QWidget, model, index: QModelIndex) -> None:
         did = index.data(Qt.UserRole)
+        if did is None:
+            return
         defn = self._store.get_definition(did)
         if not defn:
             return
-
-        t = defn.param_type
 
         if isinstance(editor, QComboBox):
             val = editor.currentData()
@@ -283,4 +224,9 @@ class ParameterDelegate(QStyledItemDelegate):
         else:
             return
 
+        # Directly call store.request_write — bypasses model.setData
+        # to ensure the signal fires even if value appears unchanged
+        self._store.request_write(did, val)
+
+        # Also notify model for immediate visual update
         model.setData(index, val, Qt.EditRole)
