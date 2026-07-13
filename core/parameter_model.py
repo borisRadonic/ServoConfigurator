@@ -120,6 +120,12 @@ class ParameterValue:
         if t == ParameterType.ENUM:
             return self.definition.enum_values.get(int(self._value), str(self._value))
         if t == ParameterType.FLOAT:
+            step = self.definition.step
+            if step and step > 0:
+                import math
+                dec = max(2, -int(math.floor(math.log10(step))))
+                dec = min(dec, 10)
+                return f"{self._value:.{dec}f}"
             return f"{self._value:.6g}"
         return str(self._value)
 

@@ -10,6 +10,7 @@ Root causes fixed:
   3. UserRole must be available on every column so delegate can get DID.
 """
 from __future__ import annotations
+import math
 from typing import Any, Optional
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt, Signal
@@ -181,9 +182,10 @@ class ParameterDelegate(QStyledItemDelegate):
             w.setMaximum(defn.max_val if defn.max_val is not None else  1e9)
             if defn.step:
                 w.setSingleStep(defn.step)
-                s = str(defn.step)
-                dec = len(s.rstrip("0").split(".")[-1]) if "." in s else 2
-                w.setDecimals(min(max(dec, 2), 8))
+                # Use log10 — str() uses scientific notation for small steps
+                # e.g. str(1e-7) = "1e-07" which breaks the old string method
+                dec = max(2, -int(math.floor(math.log10(defn.step)))) if defn.step > 0 else 6
+                w.setDecimals(min(dec, 10))
             else:
                 w.setDecimals(6)
             if defn.unit and defn.unit not in ("-", ""):
