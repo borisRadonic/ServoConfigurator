@@ -1,5 +1,5 @@
 """
-Main Window — with Firmware tab and fixed edit
+Main Window — UI lock during firmware upload
 """
 from __future__ import annotations
 import logging
@@ -21,6 +21,8 @@ from transport.transport import AbstractTransport
 from uds.client import UDSClient
 
 log = logging.getLogger(__name__)
+
+FW_TAB_INDEX = 1   # index of Firmware tab in QTabWidget
 
 
 class _LogHandler(logging.Handler):
@@ -67,16 +69,18 @@ class MainWindow(QMainWindow):
         self._tabs.setDocumentMode(True)
         self.setCentralWidget(self._tabs)
 
-        # Parameters tab
+        # Parameters tab (index 0)
         self._param_panel = ParameterPanel(self._store)
         self._param_panel.refresh_requested.connect(self._read_all)
         self._tabs.addTab(self._param_panel, "⚙  Parameters")
 
-        # Firmware tab
+        # Firmware tab (index 1 = FW_TAB_INDEX)
         self._fw_panel = FirmwarePanel()
+        self._fw_panel.upload_started.connect(self._on_upload_started)
+        self._fw_panel.upload_finished.connect(self._on_upload_finished)
         self._tabs.addTab(self._fw_panel, "⬆  Firmware")
 
-        # Console tab
+        # Console tab (index 2)
         self._console = QPlainTextEdit()
         self._console.setReadOnly(True)
         self._console.setMaximumBlockCount(3000)
@@ -88,7 +92,6 @@ class MainWindow(QMainWindow):
     def _build_menus(self):
         mb = self.menuBar()
 
-        # File
         fm = mb.addMenu("File")
         a = QAction("Open Parameter JSON…", self)
         a.setShortcut(QKeySequence.Open)
@@ -100,7 +103,6 @@ class MainWindow(QMainWindow):
         q.triggered.connect(self.close)
         fm.addAction(q)
 
-        # Device
         dm = mb.addMenu("Device")
         self._act_connect = QAction("Connect…", self)
         self._act_connect.setShortcut("Ctrl+Shift+C")
@@ -120,11 +122,10 @@ class MainWindow(QMainWindow):
         dm.addAction(self._act_read_all)
         dm.addSeparator()
 
-        a = QAction("ECU Reset (Hard)", self)
-        a.triggered.connect(self._ecu_reset)
-        dm.addAction(a)
+        self._act_ecu_reset = QAction("ECU Reset (Hard)", self)
+        self._act_ecu_reset.triggered.connect(self._ecu_reset)
+        dm.addAction(self._act_ecu_reset)
 
-        # Help
         hm = mb.addMenu("Help")
         a = QAction("About", self)
         a.triggered.connect(self._about)
@@ -135,6 +136,9 @@ class MainWindow(QMainWindow):
         self._lbl_conn = QLabel("  ● Disconnected")
         self._lbl_conn.setStyleSheet("color:#F38BA8; font-weight:bold;")
         sb.addPermanentWidget(self._lbl_conn)
+        self._lbl_lock = QLabel("")
+        self._lbl_lock.setStyleSheet("color:#FAB387; font-weight:bold; font-size:12px;")
+        sb.addPermanentWidget(self._lbl_lock)
         self._lbl_tp = QLabel("")
         self._lbl_tp.setStyleSheet("color:#585B70; font-size:11px;")
         sb.addPermanentWidget(self._lbl_tp)
@@ -150,6 +154,51 @@ class MainWindow(QMainWindow):
         self._tp_timer.setInterval(2000)
         self._tp_timer.timeout.connect(self._keepalive)
         self._tp_pulse = False
+
+    # ── Upload lock/unlock ────────────────────────────────────────
+
+    def _on_upload_started(self):
+        """Lock entire UI during firmware upload — only Firmware tab active."""
+        log.warning("Firmware upload started — UI locked")
+
+        # Switch to firmware tab and prevent switching away
+        self._tabs.setCurrentIndex(FW_TAB_INDEX)
+
+        # Disable all other tabs
+        for i in range(self._tabs.count()):
+            if i != FW_TAB_INDEX:
+                self._tabs.setTabEnabled(i, False)
+
+        # Disable all menu actions
+        for act in [self._act_connect, self._act_disconnect,
+                    self._act_read_all, self._act_ecu_reset]:
+            act.setEnabled(False)
+
+        # Stop keepalive — don't send TP while uploading
+        self._tp_timer.stop()
+        self._lbl_tp.setText("")
+        self._lbl_lock.setText("  🔒 UPLOAD IN PROGRESS")
+
+    def _on_upload_finished(self):
+        """Unlock UI after upload completes or is cancelled."""
+        log.info("Upload finished — UI unlocked")
+
+        # Re-enable all tabs
+        for i in range(self._tabs.count()):
+            self._tabs.setTabEnabled(i, True)
+
+        # Restore menu actions based on connection state
+        connected = self._transport is not None
+        self._act_connect.setEnabled(not connected)
+        self._act_disconnect.setEnabled(connected)
+        self._act_read_all.setEnabled(connected)
+        self._act_ecu_reset.setEnabled(connected)
+
+        # Resume keepalive
+        if connected:
+            self._tp_timer.start()
+
+        self._lbl_lock.setText("")
 
     # ── Actions ──────────────────────────────────────────────────
 
@@ -193,12 +242,10 @@ class MainWindow(QMainWindow):
         self._client.parameter_written.connect(self._param_panel.on_parameter_written)
         self._client.error_occurred.connect(self._on_error)
 
-        # Wire firmware updater
         from uds.firmware_update import FirmwareUpdater
         self._updater = FirmwareUpdater(transport, parent=self)
         self._fw_panel.set_updater(self._updater)
 
-        # UI state
         self._lbl_conn.setText(f"  ● {transport.name}")
         self._lbl_conn.setStyleSheet("color:#A6E3A1; font-weight:bold;")
         self._act_connect.setEnabled(False)
@@ -206,10 +253,8 @@ class MainWindow(QMainWindow):
         self._act_read_all.setEnabled(True)
         self._param_panel.set_connected(True)
         self._fw_panel.set_connected(True)
-
         self._tp_timer.start()
 
-        # Auto-read after connect
         log.info("Connected via %s — reading all parameters…", transport.name)
         self._read_all()
 
@@ -223,6 +268,7 @@ class MainWindow(QMainWindow):
             self._transport = None
         self._updater = None
         self._fw_panel.set_updater(None)
+
         self._lbl_conn.setText("  ● Disconnected")
         self._lbl_conn.setStyleSheet("color:#F38BA8; font-weight:bold;")
         self._lbl_tp.setText("")
@@ -248,7 +294,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Not Connected", "Connect first.")
             return
         if QMessageBox.question(
-                self, "ECU Reset", "Send hard reset?",
+                self, "ECU Reset", "Send hard reset to ECU?",
                 QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
             from uds.codec import UDSCodec, ResetType
             try:
@@ -264,9 +310,19 @@ class MainWindow(QMainWindow):
         QMessageBox.about(self, "ServoConfigurator",
             "<h3>ServoConfigurator</h3>"
             "<p>UDS motor controller configuration tool.</p>"
-            "<b>Transports:</b> Serial · CAN (PEAK) · TCP/IP · Mock<br>"
-            "<b>Protocols:</b> ISO 14229-1 UDS · ISO 15765-2 ISO-TP")
+            "<b>Transports:</b> Serial · CAN (PEAK) · TCP/IP · Mock")
 
     def closeEvent(self, event):
+        if self._fw_panel.is_uploading:
+            r = QMessageBox.question(
+                self, "Upload in Progress",
+                "Firmware upload is active. Cancel upload and quit?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No)
+            if r != QMessageBox.Yes:
+                event.ignore()
+                return
+            if self._updater:
+                self._updater.cancel()
         self._disconnect()
         event.accept()
