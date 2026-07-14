@@ -159,18 +159,23 @@ def default_key_from_seed(seed: bytes, level: int = 0x01) -> bytes:
     BL library (l3/security_access.hpp):
         key = HMAC-SHA256(per_level_secret, seed)[0:4]
 
-    Levels: 0x01=User, 0x02=Manufacturer, 0x03=Developer
-    Firmware update needs Manufacturer (0x02).
-
-    !! Replace secrets with real provisioned values from your HSM !!
+    FIXED (per BL library conversation): "level" here IS the real UDS
+    requestSeed SUBFUNCTION byte (VinBT-430), not a 1/2/3 array index -
+    the two were being conflated, which meant firmware_update.py's
+    encode_security_access_request_seed(0x01) call below was actually
+    unlocking User level, not Manufacturer as this docstring always
+    claimed the flow needed. requestSeed subfunctions: 0x01=User,
+    0x03=Manufacturer, 0x05=Developer (send_key's level+1 pattern then
+    naturally produces the matching sendKey subfunction: 0x02/0x04/0x06).
     """
     import hmac
     import hashlib
-    # Per-level HMAC secrets — REPLACE with real OTP provisioned values
+    # Per-level HMAC secrets — REPLACE with real OTP provisioned values.
+    # Keyed by the REAL requestSeed subfunction byte, not an arbitrary index.
     secrets = {
         0x01: bytes(32),   # User         — placeholder (32 zero bytes)
-        0x02: bytes(32),   # Manufacturer — placeholder (32 zero bytes)
-        0x03: bytes(32),   # Developer    — placeholder (32 zero bytes)
+        0x03: bytes(32),   # Manufacturer — placeholder (32 zero bytes)
+        0x05: bytes(32),   # Developer    — placeholder (32 zero bytes)
     }
     secret = secrets.get(level, bytes(32))
     digest = hmac.new(secret, seed, hashlib.sha256).digest()
@@ -244,20 +249,36 @@ class _UpdateWorker(QObject):
             SessionType.PROGRAMMING))
 
         # -- Step 2-3: Security Access --------------------------------
-        self._report(2, "Security Access: requesting seed�")
-        resp = self._send(self._codec.encode_security_access_request_seed(0x01))
+        # FIXED (per BL library conversation): was requesting level 0x01
+        # (User) despite this needing Manufacturer - EraseMemory on the
+        # real BL library requires Manufacturer level and would reject
+        # this with securityAccessDenied. 0x03 is the real requestSeed
+        # subfunction for Manufacturer (VinBT-430).
+        self._report(2, "Security Access: requesting seed (Manufacturer)...")
+        resp = self._send(self._codec.encode_security_access_request_seed(0x03))
         seed = resp.get("seed", b"")
         if not seed:
             raise TransportError("ECU returned empty seed")
 
-        key = self._key_fn(seed, 0x01)
-        self._report(4, "Security Access: sending key�")
-        self._send(self._codec.encode_security_access_send_key(0x01, key))
+        key = self._key_fn(seed, 0x03)
+        self._report(4, "Security Access: sending key...")
+        self._send(self._codec.encode_security_access_send_key(0x03, key))
 
         # -- Step 4: Erase flash (RoutineControl 0xFF00) --------------
-        self._report(6, f"Erasing flash at 0x{self._base_addr:08X}�")
-        # Option byte: 0x11=Application, 0xAA=CBL (VinBT-355/500)
-        erase_data = struct.pack(">II", self._base_addr, total_bytes) + bytes([RoutineID.ERASE_OPTION_APPLICATION])
+        self._report(6, f"Erasing flash at 0x{self._base_addr:08X}...")
+        # FIXED (per BL library conversation): the BL library's real,
+        # deployed EraseMemory format (VinBT-496/561, confirmed against
+        # actual shipped firmware) does NOT carry address/length in the
+        # routineControlOptionRecord at all - VinBT-561 explicitly states
+        # "the Bootloader shall ignore the data MemoryAddress and
+        # MemorySize". The real request is just
+        # [discriminator][0x00][0x00] (3 bytes) - address/length for the
+        # actual transfer belong in RequestDownload (0x34) instead, where
+        # this code already sends them correctly below. The previous
+        # 9-byte form (4-byte address + 4-byte length + 1-byte option)
+        # doesn't match any real device and would misread the
+        # discriminator byte as part of the address on a real target.
+        erase_data = bytes([RoutineID.ERASE_OPTION_APPLICATION, 0x00, 0x00])
         self._send_routine(RoutineID.ERASE_FLASH, erase_data, timeout=15.0)
 
         # -- Step 5: RequestDownload ----------------------------------
