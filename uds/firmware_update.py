@@ -260,9 +260,21 @@ class _UpdateWorker(QObject):
         if not seed:
             raise TransportError("ECU returned empty seed")
 
-        key = self._key_fn(seed, 0x03)
-        self._report(4, "Security Access: sending key...")
-        self._send(self._codec.encode_security_access_send_key(0x03, key))
+        # FIXED (real gap found via reconnection testing): VinBT-437 -
+        # if the ECU is ALREADY unlocked at this level (e.g. from an
+        # earlier session that never re-locked), it responds with an
+        # all-zero seed instead of a real one. The BL library correctly
+        # rejects a sendKey in that state (there is no real seed to
+        # answer) with requestSequenceError - this used to always send a
+        # key regardless, which failed against any device (real or
+        # simulated) that was already unlocked. Skip sendKey entirely
+        # when the seed is all zeros.
+        if seed == bytes(len(seed)):
+            self._report(4, "Security Access: already unlocked, skipping sendKey")
+        else:
+            key = self._key_fn(seed, 0x03)
+            self._report(4, "Security Access: sending key...")
+            self._send(self._codec.encode_security_access_send_key(0x03, key))
 
         # -- Step 4: Erase flash (RoutineControl 0xFF00) --------------
         self._report(6, f"Erasing flash at 0x{self._base_addr:08X}...")
