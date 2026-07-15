@@ -56,8 +56,8 @@ def main() -> int:
     #QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
 
     app = QApplication(sys.argv)
-    app.setApplicationName("MCTool")
-    app.setOrganizationName("Bucher Automation")
+    app.setApplicationName("Device Configurator")
+    app.setOrganizationName("UDS")
 
     # Font
     font = QFont("Segoe UI", 10)

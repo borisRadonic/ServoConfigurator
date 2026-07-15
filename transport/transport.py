@@ -80,6 +80,12 @@ class AbstractTransport(ABC):
     def send(self, payload: bytes) -> None: ...
 
     @abstractmethod
+    def set_scan_callback(self, cb) -> None:
+        """Register callback(device_addr: int, data: bytes) for scanner.
+        Set to None to stop scanning. Thread-safe via GIL.
+        """
+        self._scan_callback = cb
+
     def send_and_wait(self, payload: bytes, timeout: float = 1.0) -> bytes: ...
 
     @property
@@ -114,6 +120,7 @@ class SerialTransport(AbstractTransport):
         self._response_event = threading.Event()
         self._last_response: Optional[bytes] = None
         self._lock = threading.Lock()
+        self._scan_callback = None
 
     @property
     def name(self) -> str:
@@ -162,6 +169,12 @@ class SerialTransport(AbstractTransport):
         frame = self._frame(payload)
         with self._lock:
             self._serial.write(frame)
+
+    def set_scan_callback(self, cb) -> None:
+        """Register callback(device_addr: int, data: bytes) for scanner.
+        Set to None to stop scanning. Thread-safe via GIL.
+        """
+        self._scan_callback = cb
 
     def send_and_wait(self, payload: bytes, timeout: float = 1.0) -> bytes:
         self._response_event.clear()
@@ -371,6 +384,12 @@ class CANTransport(AbstractTransport):
                     seq = (seq + 1) & 0x0F
                     time.sleep(0.001)
 
+    def set_scan_callback(self, cb) -> None:
+        """Register callback(device_addr: int, data: bytes) for scanner.
+        Set to None to stop scanning. Thread-safe via GIL.
+        """
+        self._scan_callback = cb
+
     def send_and_wait(self, payload: bytes, timeout: float = 1.0) -> bytes:
         self._response_event.clear()
         self._last_response = None
@@ -387,8 +406,17 @@ class CANTransport(AbstractTransport):
         while self._running:
             try:
                 msg = self._bus.recv(timeout=0.1)
-                if msg and msg.arbitration_id == self._rx_id:
+                if not msg:
+                    continue
+                # Normal UDS response for active connection
+                if msg.arbitration_id == self._rx_id:
                     self._process_can_frame(bytes(msg.data))
+                # Scanner callback: receive any 0x18DAF1xx frame
+                # (physical replies to our tester addr 0xF1)
+                elif self._scan_callback is not None:
+                    if (msg.arbitration_id & 0xFFFFFF00) == 0x18DAF100:
+                        device_addr = msg.arbitration_id & 0xFF
+                        self._scan_callback(device_addr, bytes(msg.data))
             except Exception as e:
                 if self._running:
                     log.error("CAN RX error: %s", e)
@@ -464,6 +492,12 @@ class MockTransport(AbstractTransport):
 
     def send(self, payload: bytes) -> None:
         pass  # fire-and-forget not used in mock
+
+    def set_scan_callback(self, cb) -> None:
+        """Register callback(device_addr: int, data: bytes) for scanner.
+        Set to None to stop scanning. Thread-safe via GIL.
+        """
+        self._scan_callback = cb
 
     def send_and_wait(self, payload: bytes, timeout: float = 1.0) -> bytes:
         import struct
