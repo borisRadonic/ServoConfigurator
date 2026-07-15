@@ -110,12 +110,18 @@ class MockTransport(AbstractTransport):
 
         # ── RoutineControl (0x31) ────────────────────────────────
         if sid == 0x31 and len(payload) >= 4:
-            time.sleep(0.200)
+            routine_id = (payload[2] << 8) | payload[3]
+            if routine_id == 0xFF00:    # EraseMemory
+                time.sleep(0.500)
+            elif routine_id == 0xFF04:  # CheckMemory
+                time.sleep(0.200)
+            else:
+                time.sleep(0.050)
             return bytes([0x71]) + payload[1:4]
 
         # ── RequestDownload (0x34) ───────────────────────────────
         if sid == 0x34:
-            return bytes([0x74, 0x40, 0x00, 0x02, 0x00])
+            return bytes([0x74, 0x20, 0x01, 0x02])  # lengthFormat=0x20→2bytes, maxBlock=0x0102=258
 
         # ── TransferData (0x36) ──────────────────────────────────
         if sid == 0x36:
