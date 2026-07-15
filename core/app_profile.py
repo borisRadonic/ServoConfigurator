@@ -71,12 +71,18 @@ class ChangeAddressFeature:
 
 
 @dataclass
+class ConfigManagementFeature:
+    enabled: bool = True
+
+
+@dataclass
 class FeaturesConfig:
     parameters:           ParameterFeature      = field(default_factory=ParameterFeature)
     diagnostics:          DiagnosticsFeature     = field(default_factory=DiagnosticsFeature)
     firmware:             FirmwareFeature        = field(default_factory=FirmwareFeature)
     device_scanner:       DeviceScannerFeature   = field(default_factory=DeviceScannerFeature)
     change_device_address: ChangeAddressFeature  = field(default_factory=ChangeAddressFeature)
+    config_management:     ConfigManagementFeature = field(default_factory=ConfigManagementFeature)
 
 
 @dataclass
@@ -238,6 +244,10 @@ def load_profile(path: Optional[Path] = None) -> AppProfile:
     # features.change_device_address
     fc = raw.get("features", {}).get("change_device_address", {})
     p.features.change_device_address.enabled = bool(_get(fc, "enabled", default=True))
+
+    # features.config_management
+    fcm = raw.get("features", {}).get("config_management", {})
+    p.features.config_management.enabled = bool(_get(fcm, "enabled", default=True))
 
     # simulation
     sim = raw.get("simulation", {})

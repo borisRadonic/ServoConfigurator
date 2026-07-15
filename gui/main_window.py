@@ -118,7 +118,7 @@ class MainWindow(QMainWindow):
             self._diag_tab = None
 
         # Configuration Management tab
-        if profile.features.parameters.enabled:
+        if profile.features.config_management.enabled:
             self._config_panel = ConfigPanel(self._store)
             self._config_panel.write_parameter.connect(self._on_config_write)
             self._tabs.addTab(self._config_panel, "⚙  Configuration")

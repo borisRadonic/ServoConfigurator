@@ -94,3 +94,6 @@ ui:
   show_unit_column: true
   show_desc_column: true
   parameter_json: "parameters.json"   # Default parameter definition file
+
+  config_management:
+    enabled:    true
