@@ -29,10 +29,9 @@ from core.app_profile import profile
 
 log = logging.getLogger(__name__)
 
-TAB_PARAMS   = 0
-TAB_DIAG     = 1
-TAB_FIRMWARE = 2
-TAB_CONSOLE  = 3
+# Tab indices are computed dynamically in MainWindow._build_ui()
+# because tabs are conditionally shown based on app_config.yaml profile.
+# Use self._tab_index("firmware") etc. instead of hardcoded constants.
 
 # NvField::DeviceAddress DID — from nvstore_field_map (offset 0x000A)
 # Write this DID with WDBI to change device address, then ECU Reset
@@ -89,6 +88,7 @@ class MainWindow(QMainWindow):
         self._client:    Optional[UDSClient] = None
         self._updater = None
         self._device_address: Optional[int] = None
+        self._tab_labels: dict[str, str] = {}  # key → tab text, set in _build_ui
 
         self._build_ui()
         self._build_menus()
@@ -108,12 +108,14 @@ class MainWindow(QMainWindow):
             self._param_panel = ParameterPanel(self._store)
             self._param_panel.refresh_requested.connect(self._read_all)
             self._tabs.addTab(self._param_panel, "⚙  Parameters")
+            self._tab_labels["params"] = "⚙  Parameters"
         else:
             self._param_panel = None
 
         if profile.features.diagnostics.enabled:
             self._diag_tab = _DiagTab()
             self._tabs.addTab(self._diag_tab, "🔍  Diagnostics")
+            self._tab_labels["diag"] = "🔍  Diagnostics"
         else:
             self._diag_tab = None
 
@@ -122,6 +124,7 @@ class MainWindow(QMainWindow):
             self._config_panel = ConfigPanel(self._store)
             self._config_panel.write_parameter.connect(self._on_config_write)
             self._tabs.addTab(self._config_panel, "⚙  Configuration")
+            self._tab_labels["config"] = "⚙  Configuration"
         else:
             self._config_panel = None
 
@@ -130,6 +133,7 @@ class MainWindow(QMainWindow):
             self._fw_panel.upload_started.connect(self._on_upload_started)
             self._fw_panel.upload_finished.connect(self._on_upload_finished)
             self._tabs.addTab(self._fw_panel, "⬆  Firmware")
+            self._tab_labels["firmware"] = "⬆  Firmware"
         else:
             self._fw_panel = None
 
@@ -140,6 +144,7 @@ class MainWindow(QMainWindow):
         self._console.setStyleSheet(
             "background:#11111B; color:#CDD6F4; border:none;")
         self._tabs.addTab(self._console, "📋  Console")
+        self._tab_labels["console"] = "📋  Console"
 
     def _build_menus(self):
         mb = self.menuBar()
@@ -214,6 +219,16 @@ class MainWindow(QMainWindow):
         hm = mb.addMenu("Help")
         hm.addAction(QAction("About", self, triggered=self._about))
 
+    def _tab_index(self, key: str) -> int:
+        """Return current tab index for a given key, or -1 if tab is disabled."""
+        label = self._tab_labels.get(key)
+        if label is None:
+            return -1
+        for i in range(self._tabs.count()):
+            if self._tabs.tabText(i) == label:
+                return i
+        return -1
+
     def _build_statusbar(self):
         sb = self.statusBar()
 
@@ -259,9 +274,11 @@ class MainWindow(QMainWindow):
 
     def _on_upload_started(self):
         log.warning("Firmware upload started — UI locked")
-        self._tabs.setCurrentIndex(TAB_FIRMWARE)
+        fw_idx = self._tab_index("firmware")
+        if fw_idx >= 0:
+            self._tabs.setCurrentIndex(fw_idx)
         for i in range(self._tabs.count()):
-            if i != TAB_FIRMWARE:
+            if i != fw_idx:
                 self._tabs.setTabEnabled(i, False)
         for act in [self._act_connect, self._act_disconnect, self._act_scan,
                     self._act_read_all, self._act_read_dtc, self._act_read_ecu,
@@ -444,13 +461,15 @@ class MainWindow(QMainWindow):
 
     def _quick_read_dtc(self):
         if not self._diag_tab: return
-        self._tabs.setCurrentIndex(TAB_DIAG)
+        diag_idx = self._tab_index("diag")
+        if diag_idx >= 0: self._tabs.setCurrentIndex(diag_idx)
         self._diag_tab._sub.setCurrentIndex(0)
         self._diag_tab.dtc_panel._read_dtcs()
 
     def _quick_read_ecu(self):
         if not self._diag_tab: return
-        self._tabs.setCurrentIndex(TAB_DIAG)
+        diag_idx = self._tab_index("diag")
+        if diag_idx >= 0: self._tabs.setCurrentIndex(diag_idx)
         self._diag_tab._sub.setCurrentIndex(2)
         self._diag_tab.ecu_panel._read_all()
 
