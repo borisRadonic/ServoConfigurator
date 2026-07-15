@@ -16,6 +16,13 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+import io
+
+# Fix Windows terminal encoding (cp1252 cannot handle Unicode)
+if hasattr(sys.stdout, "buffer"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "buffer"):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 from pathlib import Path
 
 # ── Make sure package root is on sys.path ────────────────────────────

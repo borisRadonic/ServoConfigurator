@@ -8,12 +8,12 @@ Implements UDS-based firmware download sequence:
     3. 0x27 0x02  SecurityAccess ? SendKey
     4. 0x31 0x01  RoutineControl ? Start  (erase flash)
     5. 0x34       RequestDownload          (announce transfer)
-    6. 0x36 �     TransferData             (blocks)
+    6. 0x36 ...     TransferData             (blocks)
     7. 0x37       RequestTransferExit      (finalize)
     8. 0x31 0x01  RoutineControl ? Start  (verify checksum/CRC)
     9. 0x11 0x01  ECUReset ? HardReset
 
-Intel HEX parsing is done internally � no external library required.
+Intel HEX parsing is done internally ... no external library required.
 Supports HEX record types 00 (Data), 01 (EOF), 02 (Extended Segment),
 03 (Start Segment), 04 (Extended Linear Address), 05 (Start Linear).
 
@@ -65,7 +65,7 @@ class IntelHexError(Exception):
 class IntelHexParser:
     """
     Parses Intel HEX files into a list of contiguous HexSegments.
-    Supports record types 00�05.
+    Supports record types 00...05.
     """
 
     def parse(self, path: str | Path) -> List[HexSegment]:
@@ -121,7 +121,7 @@ class IntelHexParser:
                     upper_address = ((data[0] << 8) | data[1]) << 16
                     current = None
 
-                elif rec_type in (0x03, 0x05):  # Start addresses � ignore
+                elif rec_type in (0x03, 0x05):  # Start addresses ... ignore
                     pass
 
                 else:
@@ -228,7 +228,7 @@ class _UpdateWorker(QObject):
         try:
             self._execute()
         except UDSNegativeResponse as e:
-            msg = f"UDS error: NRC 0x{e.nrc:02X} � {NRC.description(e.nrc)}"
+            msg = f"UDS error: NRC 0x{e.nrc:02X} ... {NRC.description(e.nrc)}"
             log.error(msg)
             self.finished.emit(False, msg)
         except TransportError as e:
@@ -244,7 +244,7 @@ class _UpdateWorker(QObject):
         total_bytes = len(self._flat_data)
 
         # -- Step 1: Programming session -----------------------------
-        self._report(0, "Switching to programming session�")
+        self._report(0, "Switching to programming session...")
         self._send(self._codec.encode_diagnostic_session_control(
             SessionType.PROGRAMMING))
 
@@ -294,7 +294,7 @@ class _UpdateWorker(QObject):
         self._send_routine(RoutineID.ERASE_FLASH, erase_data, timeout=15.0)
 
         # -- Step 5: RequestDownload ----------------------------------
-        self._report(10, f"Requesting download ({total_bytes} bytes)�")
+        self._report(10, f"Requesting download ({total_bytes} bytes)...")
         rd_req = self._encode_request_download(
             address=self._base_addr,
             length=total_bytes,
@@ -307,7 +307,7 @@ class _UpdateWorker(QObject):
         log.info("Download accepted. Negotiated block size: %d bytes", block_size)
 
         # -- Step 6: TransferData -------------------------------------
-        self._report(12, "Transferring firmware�")
+        self._report(12, "Transferring firmware...")
         offset = 0
         block_seq = 1
         while offset < total_bytes:
@@ -336,24 +336,24 @@ class _UpdateWorker(QObject):
 
             percent = 12 + int(offset / total_bytes * 78)  # 12% ? 90%
             self._report(percent,
-                         f"Transferring� {offset}/{total_bytes} bytes "
+                         f"Transferring... {offset}/{total_bytes} bytes "
                          f"({offset*100//total_bytes}%)")
 
         # -- Step 7: RequestTransferExit ------------------------------
-        self._report(91, "Finalizing transfer�")
+        self._report(91, "Finalizing transfer...")
         self._raw_send(bytes([ServiceID.REQUEST_TRANSFER_EXIT]), timeout=5.0)
 
         # -- Step 8: Verify integrity (RoutineControl 0xFF01) ---------
-        self._report(93, "Verifying integrity�")
+        self._report(93, "Verifying integrity...")
         verify_data = struct.pack(">II", self._base_addr, total_bytes)
         self._send_routine(RoutineID.CHECK_MEMORY, verify_data, timeout=10.0)
 
         # -- Step 9: ECU Reset ----------------------------------------
-        self._report(98, "Resetting ECU�")
+        self._report(98, "Resetting ECU...")
         try:
             self._raw_send(self._codec.encode_ecu_reset(ResetType.HARD_RESET), timeout=2.0)
         except TransportError:
-            pass  # ECU may reset before sending response � that's OK
+            pass  # ECU may reset before sending response ... that's OK
 
         self._report(100, "Firmware update complete ?")
         self.finished.emit(True, "Firmware updated successfully")
@@ -386,7 +386,7 @@ class _UpdateWorker(QObject):
                                   compression: int = 0,
                                   encrypting: int = 0) -> bytes:
         """
-        ISO 14229-1 �14.3 RequestDownload (0x34)
+        ISO 14229-1 ...14.3 RequestDownload (0x34)
         dataFormatIdentifier:  [comp(4) | encr(4)]
         addressAndLengthFormatIdentifier: [memLen(4) | memAddr(4)]
         Both address and length encoded as 4 bytes (big-endian).
