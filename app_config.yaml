@@ -25,6 +25,14 @@ transports:
   mock:      true    # Simulation mode (Mock transport)
                      # Set false to hide simulation option in production
 
+# CAN configuration
+can:
+  default_mode:    "classic"   # classic | fd
+  default_bitrate: 250000      # nominal bitrate (250k standard for Vinci)
+  default_data_bitrate: 2000000  # CAN FD data phase bitrate (FD mode only)
+  allow_fd:        true        # Show CAN FD option in connection dialog
+                               # Set false to hide FD option (classic-only deployments)
+
 # ── Feature flags ──────────────────────────────────────────────────
 features:
   parameters:

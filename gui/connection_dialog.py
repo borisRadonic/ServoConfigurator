@@ -51,6 +51,8 @@ class _SerialPage(QWidget):
 class _CANPage(QWidget):
     def __init__(self):
         super().__init__()
+        from core.app_profile import profile as _profile
+        _can = _profile.can
         lay = QFormLayout(self); lay.setSpacing(10)
         self.iface = QComboBox()
         self.iface.addItems(["pcan","kvaser","socketcan","vector","ixxat"])
@@ -59,7 +61,12 @@ class _CANPage(QWidget):
         self.br = QComboBox()
         for b in [125000,250000,500000,1000000]:
             self.br.addItem(f"{b//1000} kbit/s", b)
-        self.br.setCurrentText("250 kbit/s")
+        dbr = getattr(_can, "default_bitrate", 250000)
+        _br_txt = f"{dbr//1000} kbit/s"
+        if self.br.findText(_br_txt) >= 0:
+            self.br.setCurrentText(_br_txt)
+        else:
+            self.br.setCurrentText("250 kbit/s")
         self.addr = QLineEdit("0xA0")
         note = QLabel("TX: 0x18DA<addr><0xF1>   RX: 0x18DA<0xF1><addr>")
         note.setStyleSheet("color:#585B70; font-size:11px;")
@@ -190,9 +197,13 @@ class ConnectionDialog(QDialog):
                 from transport.transport import SerialTransport
                 t = SerialTransport(); t.connect(**page.kwargs())
             elif transport_type == "can":
-                kw = page.kwargs()
-                da = kw.pop("device_address", 0xA0)
-                t = CANTransport(device_address=da); t.connect(**kw)
+                kw  = page.kwargs()
+                da  = kw.pop("device_address", 0xA0)
+                fd  = kw.pop("fd_mode", False)
+                dbr = kw.pop("data_bitrate", 2000000)
+                t   = CANTransport(device_address=da,
+                                   fd_mode=fd, data_bitrate=dbr)
+                t.connect(**kw)
             elif transport_type == "tcp":
                 from transport.tcp_transport import TCPTransport
                 t = TCPTransport(); t.connect(**page.kwargs())

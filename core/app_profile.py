@@ -41,6 +41,14 @@ class TransportConfig:
 
 
 @dataclass
+class CANConfig:
+    default_mode:         str  = "classic"   # "classic" | "fd"
+    default_bitrate:      int  = 250000
+    default_data_bitrate: int  = 2000000
+    allow_fd:             bool = True
+
+
+@dataclass
 class ParameterFeature:
     enabled:   bool = True
     read_only: bool = False
@@ -112,6 +120,7 @@ class UIConfig:
 class AppProfile:
     app:        AppConfig        = field(default_factory=AppConfig)
     transports: TransportConfig  = field(default_factory=TransportConfig)
+    can:        CANConfig        = field(default_factory=CANConfig)
     features:   FeaturesConfig   = field(default_factory=FeaturesConfig)
     simulation: SimulationConfig = field(default_factory=SimulationConfig)
     ui:         UIConfig         = field(default_factory=UIConfig)
@@ -219,6 +228,13 @@ def load_profile(path: Optional[Path] = None) -> AppProfile:
     p.transports.can    = bool(_get(t, "can",    default=True))
     p.transports.tcp    = bool(_get(t, "tcp",    default=True))
     p.transports.mock   = bool(_get(t, "mock",   default=True))
+
+    # can
+    can_raw = raw.get("can", {})
+    p.can.default_mode         = str(_get(can_raw, "default_mode",         default="classic"))
+    p.can.default_bitrate      = int(_get(can_raw, "default_bitrate",      default=250000))
+    p.can.default_data_bitrate = int(_get(can_raw, "default_data_bitrate", default=2000000))
+    p.can.allow_fd             = bool(_get(can_raw, "allow_fd",            default=True))
 
     # features.parameters
     fp = raw.get("features", {}).get("parameters", {})
