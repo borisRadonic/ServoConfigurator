@@ -88,9 +88,9 @@ class SimulationConfig:
 
 @dataclass
 class AppConfig:
-    name:         str = "ServoConfigurator"
-    organization: str = "Bucher Hydraulics"
-    title:        str = "ServoConfigurator"
+    name:         str = "Device Configurator"
+    organization: str = ""
+    title:        str = "Device Configurator"
 
 
 @dataclass
@@ -204,7 +204,7 @@ def load_profile(path: Optional[Path] = None) -> AppProfile:
     # app
     app_raw = raw.get("app", {})
     p.app.name         = _get(app_raw, "name",         default=p.app.name)
-    p.app.organization = _get(app_raw, "organization",  default=p.app.organization)
+    p.app.organization = _get(app_raw, "organization",  default="")
     p.app.title        = _get(app_raw, "title",         default=p.app.title)
 
     # transports

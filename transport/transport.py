@@ -79,7 +79,6 @@ class AbstractTransport(ABC):
     @abstractmethod
     def send(self, payload: bytes) -> None: ...
 
-    @abstractmethod
     def set_scan_callback(self, cb) -> None:
         """Register callback(device_addr: int, data: bytes) for scanner.
         Set to None to stop scanning. Thread-safe via GIL.

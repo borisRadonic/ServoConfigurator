@@ -12,10 +12,10 @@
 #   3. Default:                app_config.yaml next to main.py
 
 app:
-  name: "ServoConfigurator"
-  organization: "Bucher Hydraulics"
+  name: "Device Configurator"
+  organization: ""
   # Window title — override per application
-  title: "ServoConfigurator — Motor Controller Configuration"
+  title: "Device Configurator"
 
 # ── Transport / Connection ──────────────────────────────────────────
 transports:
@@ -64,7 +64,7 @@ simulation:
     0xF187: "VINCI-SERVO-001-REV-B"    # Spare part number
     0xF188: "SW-VINCI-FOC-2024"        # SW number
     0xF189: "v2.4.1"                   # SW version
-    0xF18A: "BUCHER-HYDRAULICS-AG"     # Supplier identifier
+    0xF18A: "SYSTEM-SUPPLIER-ID"     # Supplier identifier
     0xF18B: "2024-03-15"               # Manufacturing date
     0xF18C: "SN-H755-00042"            # ECU serial number
     0xF18D: "01"                       # Supported functional units
