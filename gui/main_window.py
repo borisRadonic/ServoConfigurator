@@ -22,6 +22,7 @@ from gui.firmware_panel import FirmwarePanel
 from gui.dtc_panel import DTCPanel
 from gui.session_panel import SessionPanel
 from gui.ecu_info_panel import ECUInfoPanel
+from gui.config_panel import ConfigPanel
 from transport.transport import AbstractTransport, CANTransport
 from uds.client import UDSClient
 from core.app_profile import profile
@@ -115,6 +116,14 @@ class MainWindow(QMainWindow):
             self._tabs.addTab(self._diag_tab, "🔍  Diagnostics")
         else:
             self._diag_tab = None
+
+        # Configuration Management tab
+        if profile.features.parameters.enabled:
+            self._config_panel = ConfigPanel(self._store)
+            self._config_panel.write_parameter.connect(self._on_config_write)
+            self._tabs.addTab(self._config_panel, "⚙  Configuration")
+        else:
+            self._config_panel = None
 
         if profile.features.firmware.enabled:
             self._fw_panel = FirmwarePanel()
@@ -363,6 +372,7 @@ class MainWindow(QMainWindow):
         if self._param_panel:
             self._client.parameter_written.connect(self._param_panel.on_parameter_written)
         self._client.error_occurred.connect(self._on_error)
+        self._client.parameter_written.connect(self._on_parameter_written_history)
 
         if self._diag_tab: self._diag_tab.set_transport(transport)
         if self._diag_tab: self._diag_tab.session_panel.session_changed.connect(self._on_session_changed)
@@ -533,6 +543,20 @@ class MainWindow(QMainWindow):
             self._client.send_tester_present()
             self._tp_pulse = not self._tp_pulse
             self._lbl_tp.setText("  ◉ TP" if self._tp_pulse else "  ○ TP")
+
+    def _on_config_write(self, did: int, value) -> None:
+        """Write from ConfigPanel (batch/undo) — goes direct to client."""
+        if self._client:
+            self._client.write_parameter(did, value)
+
+    def _on_parameter_written_history(self, did: int) -> None:
+        """Record successful write in history."""
+        if not self._config_panel:
+            return
+        pv   = self._store.get_value(did)
+        defn = self._store.get_definition(did)
+        if pv and defn:
+            self._config_panel.on_parameter_written(did, None, pv.value)
 
     def _on_error(self, msg: str):
         self.statusBar().showMessage(f"⚠ {msg}", 5000)
