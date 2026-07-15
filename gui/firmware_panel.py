@@ -34,7 +34,7 @@ class FirmwarePanel(QWidget):
         self._updater = None
         self._hex_path: Optional[str] = None
         self._uploading = False
-        self._settings = QSettings("BucherHydraulics", "ServoConfigurator")
+        self._settings = QSettings("DeviceConfigurator", "DeviceConfigurator")
         self._build_ui()
         self._restore_last_file()
 

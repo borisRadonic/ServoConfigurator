@@ -61,21 +61,21 @@ simulation:
   # These simulate what a real controller would return.
   ecu_info:
     0xF186: "03"                        # Active session: Extended (0x03)
-    0xF187: "VINCI-SERVO-001-REV-B"    # Spare part number
-    0xF188: "SW-VINCI-FOC-2024"        # SW number
+    0xF187: "PART-NUMBER-001"    # Spare part number
+    0xF188: "SW-NUMBER-001"        # SW number
     0xF189: "v2.4.1"                   # SW version
     0xF18A: "SYSTEM-SUPPLIER-ID"     # Supplier identifier
     0xF18B: "2024-03-15"               # Manufacturing date
     0xF18C: "SN-H755-00042"            # ECU serial number
     0xF18D: "01"                       # Supported functional units
-    0xF18E: "KIT-VINCI-SERVO-REV-B"   # Kit assembly part number
+    0xF18E: "KIT-ASSEMBLY-001"   # Kit assembly part number
     0xF190: "WBA00000X0CH000001"       # VIN (placeholder)
-    0xF191: "HW-VINCI-H755-REV-B"     # HW number
+    0xF191: "HW-NUMBER-001"     # HW number
     0xF192: "ST-STM32H755-REV-Y"      # Supplier HW number
     0xF193: "Rev-Y"                    # Supplier HW version
     0xF194: "HAL-STM32H755-v1.2"      # Supplier SW number
     0xF195: "v1.2.0"                   # Supplier SW version
-    0xF197: "VINCI-FOC-3KW"           # System name / engine type
+    0xF197: "MOTOR-CONTROLLER"           # System name / engine type
     0xF198: "TOOL-DEV-001"            # Repair shop / tester code
     0xF199: "2024-03-20"              # Programming date
     0xF1A0: "00"                      # Programming attempts
