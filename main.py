@@ -46,9 +46,16 @@ def _configure_logging() -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="MCTool Motor Controller Configuration")
-    parser.add_argument("--json", metavar="FILE", help="Parameter JSON file to load at startup")
+    parser = argparse.ArgumentParser(description="ServoConfigurator Motor Controller Configuration")
+    parser.add_argument("--json",    metavar="FILE", help="Parameter JSON file")
+    parser.add_argument("--config",  metavar="FILE", help="App profile YAML (default: app_config.yaml)")
     args = parser.parse_args()
+
+    # Load application profile FIRST — before any Qt or GUI code
+    from core.app_profile import init_profile
+    from pathlib import Path as _Path
+    cfg_path = _Path(args.config) if getattr(args, "config", None) else None
+    init_profile(cfg_path)
 
     _configure_logging()
 

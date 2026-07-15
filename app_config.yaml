@@ -1,0 +1,96 @@
+# ServoConfigurator — Application Profile
+# =========================================
+# This file controls which features and transports are enabled.
+# Copy and rename for different deployment scenarios:
+#   app_config_production.yaml   — field use, no simulation
+#   app_config_development.yaml  — all features enabled
+#   app_config_readonly.yaml     — read-only, no writes
+#
+# The active config file is selected by:
+#   1. Command-line argument:  --config path/to/config.yaml
+#   2. Environment variable:   SERVOCONFIG_PROFILE=path/to/config.yaml
+#   3. Default:                app_config.yaml next to main.py
+
+app:
+  name: "ServoConfigurator"
+  organization: "Bucher Hydraulics"
+  # Window title — override per application
+  title: "ServoConfigurator — Motor Controller Configuration"
+
+# ── Transport / Connection ──────────────────────────────────────────
+transports:
+  serial:    true    # Serial (UART) transport
+  can:       true    # CAN (PEAK / python-can) transport
+  tcp:       true    # TCP/IP (local UDS server) transport
+  mock:      true    # Simulation mode (Mock transport)
+                     # Set false to hide simulation option in production
+
+# ── Feature flags ──────────────────────────────────────────────────
+features:
+  parameters:
+    enabled:    true
+    read_only:  false   # true = read parameters but disallow any writes
+                        # Useful for monitoring / logging applications
+
+  diagnostics:
+    enabled:    true
+    dtc:        true    # DTC read/clear panel
+    session:    true    # Session control + Raw UDS console
+    ecu_info:   true    # ECU Info (identification DIDs)
+    raw_uds:    true    # Raw UDS console (inside session panel)
+                        # Set false in production to prevent arbitrary commands
+
+  firmware:
+    enabled:    true    # Firmware upload tab
+                        # Set false to hide in field-service tools
+
+  device_scanner:
+    enabled:    true    # CAN Device Scanner
+
+  change_device_address:
+    enabled:    true    # Device → Change Device Address
+                        # Set false in production to prevent misconfiguration
+
+# ── Simulation / Mock data ─────────────────────────────────────────
+simulation:
+  enabled:  true        # Must match transports.mock above
+                        # Simulation provides realistic mock values for all
+                        # parameters and ECU info DIDs without hardware.
+
+  # Mock values for ECU Info DIDs (shown in ECU Info panel)
+  # These simulate what a real controller would return.
+  ecu_info:
+    0xF186: "03"                        # Active session: Extended (0x03)
+    0xF187: "VINCI-SERVO-001-REV-B"    # Spare part number
+    0xF188: "SW-VINCI-FOC-2024"        # SW number
+    0xF189: "v2.4.1"                   # SW version
+    0xF18A: "BUCHER-HYDRAULICS-AG"     # Supplier identifier
+    0xF18B: "2024-03-15"               # Manufacturing date
+    0xF18C: "SN-H755-00042"            # ECU serial number
+    0xF18D: "01"                       # Supported functional units
+    0xF18E: "KIT-VINCI-SERVO-REV-B"   # Kit assembly part number
+    0xF190: "WBA00000X0CH000001"       # VIN (placeholder)
+    0xF191: "HW-VINCI-H755-REV-B"     # HW number
+    0xF192: "ST-STM32H755-REV-Y"      # Supplier HW number
+    0xF193: "Rev-Y"                    # Supplier HW version
+    0xF194: "HAL-STM32H755-v1.2"      # Supplier SW number
+    0xF195: "v1.2.0"                   # Supplier SW version
+    0xF197: "VINCI-FOC-3KW"           # System name / engine type
+    0xF198: "TOOL-DEV-001"            # Repair shop / tester code
+    0xF199: "2024-03-20"              # Programming date
+    0xF1A0: "00"                      # Programming attempts
+
+  # Mock DTC list (shown in DTC panel)
+  dtc_list:
+    - dtc: "P0A0F"      # HV battery voltage
+      status: 0x08      # Confirmed
+    - dtc: "P0560"      # System voltage
+      status: 0x04      # Pending
+
+# ── UI / UX ────────────────────────────────────────────────────────
+ui:
+  theme: "dark"         # dark | light (only dark implemented currently)
+  show_did_column: true # Show DID hex column in parameter table
+  show_unit_column: true
+  show_desc_column: true
+  parameter_json: "parameters.json"   # Default parameter definition file

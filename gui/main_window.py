@@ -24,6 +24,7 @@ from gui.session_panel import SessionPanel
 from gui.ecu_info_panel import ECUInfoPanel
 from transport.transport import AbstractTransport, CANTransport
 from uds.client import UDSClient
+from core.app_profile import profile
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ class _DiagTab(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("ServoConfigurator")
+        self.setWindowTitle(profile.app.title)
         self.resize(1380, 880)
 
         self._store = ParameterStore(self)
@@ -102,17 +103,26 @@ class MainWindow(QMainWindow):
         self._tabs.setDocumentMode(True)
         self.setCentralWidget(self._tabs)
 
-        self._param_panel = ParameterPanel(self._store)
-        self._param_panel.refresh_requested.connect(self._read_all)
-        self._tabs.addTab(self._param_panel, "⚙  Parameters")
+        if profile.features.parameters.enabled:
+            self._param_panel = ParameterPanel(self._store)
+            self._param_panel.refresh_requested.connect(self._read_all)
+            self._tabs.addTab(self._param_panel, "⚙  Parameters")
+        else:
+            self._param_panel = None
 
-        self._diag_tab = _DiagTab()
-        self._tabs.addTab(self._diag_tab, "🔍  Diagnostics")
+        if profile.features.diagnostics.enabled:
+            self._diag_tab = _DiagTab()
+            self._tabs.addTab(self._diag_tab, "🔍  Diagnostics")
+        else:
+            self._diag_tab = None
 
-        self._fw_panel = FirmwarePanel()
-        self._fw_panel.upload_started.connect(self._on_upload_started)
-        self._fw_panel.upload_finished.connect(self._on_upload_finished)
-        self._tabs.addTab(self._fw_panel, "⬆  Firmware")
+        if profile.features.firmware.enabled:
+            self._fw_panel = FirmwarePanel()
+            self._fw_panel.upload_started.connect(self._on_upload_started)
+            self._fw_panel.upload_finished.connect(self._on_upload_finished)
+            self._tabs.addTab(self._fw_panel, "⬆  Firmware")
+        else:
+            self._fw_panel = None
 
         self._console = QPlainTextEdit()
         self._console.setReadOnly(True)
@@ -154,6 +164,7 @@ class MainWindow(QMainWindow):
         self._act_scan = QAction("🔍  Scan CAN Bus for Devices…", self)
         self._act_scan.setShortcut("Ctrl+Shift+S")
         self._act_scan.triggered.connect(self._show_scanner)
+        self._act_scan.setVisible(profile.features.device_scanner.enabled)
         dm.addAction(self._act_scan)
 
         dm.addSeparator()
@@ -181,6 +192,8 @@ class MainWindow(QMainWindow):
         self._act_change_addr = QAction("Change Device Address…", self)
         self._act_change_addr.setEnabled(False)
         self._act_change_addr.triggered.connect(self._change_device_address)
+        self._act_change_addr.setVisible(
+            profile.features.change_device_address.enabled)
         dm.addAction(self._act_change_addr)
 
         self._act_ecu_reset = QAction("ECU Reset (Hard)", self)
@@ -273,7 +286,7 @@ class MainWindow(QMainWindow):
                   Path.cwd() / "parameters.json"]:
             if p.exists():
                 self._store.load_from_json(p)
-                self._param_panel.refresh_categories()
+                if self._param_panel: self._param_panel.refresh_categories()
                 n = len(self._store.all_dids())
                 log.info("Loaded %d parameters from %s", n, p.name)
                 self.statusBar().showMessage(
@@ -288,7 +301,7 @@ class MainWindow(QMainWindow):
         if not path: return
         try:
             self._store.load_from_json(path)
-            self._param_panel.refresh_categories()
+            if self._param_panel: self._param_panel.refresh_categories()
         except Exception as e:
             QMessageBox.critical(self, "Error", str(e))
 
@@ -343,17 +356,20 @@ class MainWindow(QMainWindow):
             self._client.shutdown()
 
         self._client = UDSClient(transport, self._store, self)
-        self._client.read_progress.connect(self._param_panel.on_read_progress)
-        self._client.all_read_done.connect(self._param_panel.on_all_read_done)
-        self._client.parameter_written.connect(self._param_panel.on_parameter_written)
+        if self._param_panel:
+            self._client.read_progress.connect(self._param_panel.on_read_progress)
+        if self._param_panel:
+            self._client.all_read_done.connect(self._param_panel.on_all_read_done)
+        if self._param_panel:
+            self._client.parameter_written.connect(self._param_panel.on_parameter_written)
         self._client.error_occurred.connect(self._on_error)
 
-        self._diag_tab.set_transport(transport)
-        self._diag_tab.session_panel.session_changed.connect(self._on_session_changed)
+        if self._diag_tab: self._diag_tab.set_transport(transport)
+        if self._diag_tab: self._diag_tab.session_panel.session_changed.connect(self._on_session_changed)
 
         from uds.firmware_update import FirmwareUpdater
         self._updater = FirmwareUpdater(transport, parent=self)
-        self._fw_panel.set_updater(self._updater)
+        if self._fw_panel: self._fw_panel.set_updater(self._updater)
 
         # Status bar — show transport + device address
         is_can = isinstance(transport, CANTransport)
@@ -378,8 +394,8 @@ class MainWindow(QMainWindow):
         self._act_read_ecu.setEnabled(True)
         self._act_change_addr.setEnabled(is_can)  # only on CAN
         self._act_ecu_reset.setEnabled(True)
-        self._param_panel.set_connected(True)
-        self._fw_panel.set_connected(True)
+        if self._param_panel: self._param_panel.set_connected(True)
+        if self._fw_panel: self._fw_panel.set_connected(True)
         self._tp_timer.start()
 
         log.info("Connected via %s%s — reading all parameters…",
@@ -393,8 +409,8 @@ class MainWindow(QMainWindow):
         if self._transport: self._transport.disconnect(); self._transport = None
         self._updater = None
         self._device_address = None
-        self._diag_tab.set_transport(None)
-        self._fw_panel.set_updater(None)
+        if self._diag_tab: self._diag_tab.set_transport(None)
+        if self._fw_panel: self._fw_panel.set_updater(None)
 
         self._lbl_conn.setText("  ● Disconnected")
         self._lbl_conn.setStyleSheet("color:#F38BA8; font-weight:bold;")
@@ -408,8 +424,8 @@ class MainWindow(QMainWindow):
         self._act_read_ecu.setEnabled(False)
         self._act_change_addr.setEnabled(False)
         self._act_ecu_reset.setEnabled(False)
-        self._param_panel.set_connected(False)
-        self._fw_panel.set_connected(False)
+        if self._param_panel: self._param_panel.set_connected(False)
+        if self._fw_panel: self._fw_panel.set_connected(False)
         log.info("Disconnected")
 
     def _read_all(self):
@@ -417,11 +433,13 @@ class MainWindow(QMainWindow):
             self._client.read_all_parameters()
 
     def _quick_read_dtc(self):
+        if not self._diag_tab: return
         self._tabs.setCurrentIndex(TAB_DIAG)
         self._diag_tab._sub.setCurrentIndex(0)
         self._diag_tab.dtc_panel._read_dtcs()
 
     def _quick_read_ecu(self):
+        if not self._diag_tab: return
         self._tabs.setCurrentIndex(TAB_DIAG)
         self._diag_tab._sub.setCurrentIndex(2)
         self._diag_tab.ecu_panel._read_all()
@@ -528,7 +546,7 @@ class MainWindow(QMainWindow):
             "ECU Info · Firmware · Device Scanner")
 
     def closeEvent(self, event):
-        if self._fw_panel.is_uploading:
+        if (self._fw_panel and self._fw_panel.is_uploading):
             r = QMessageBox.question(
                 self, "Upload in Progress",
                 "Firmware upload is active. Cancel and quit?",
