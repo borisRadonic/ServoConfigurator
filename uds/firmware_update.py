@@ -317,9 +317,21 @@ class _UpdateWorker(QObject):
 
             chunk = self._flat_data[offset : offset + block_size]
             td_req = bytes([ServiceID.TRANSFER_DATA, block_seq & 0xFF]) + chunk
-            self._raw_send(td_req, timeout=5.0)
+            try:
+                resp = self._raw_send(td_req, timeout=5.0)
+                # Validate TransferData response (0x76 + echo of block_seq)
+                if resp and len(resp) >= 1 and resp[0] == 0x7F:
+                    nrc = resp[2] if len(resp) > 2 else 0
+                    raise UDSNegativeResponse(ServiceID.TRANSFER_DATA, nrc)
+            except (UDSNegativeResponse, TransportError):
+                raise   # re-raise to outer handler
+            except Exception as e:
+                log.exception("TransferData block %d (offset %d) failed: %s",
+                              block_seq, offset, e)
+                raise
 
             offset    += len(chunk)
+            # ISO-TP block counter: 0x01-0xFF then wrap to 0x01 (not 0x00)
             block_seq  = (block_seq % 0xFF) + 1
 
             percent = 12 + int(offset / total_bytes * 78)  # 12% ? 90%

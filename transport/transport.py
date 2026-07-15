@@ -501,7 +501,7 @@ class MockTransport(AbstractTransport):
         from core.app_profile import profile
 
         sid = payload[0]
-        time.sleep(0.005)  # simulate realistic latency
+        time.sleep(0.001)  # minimal latency simulation
 
         # ── ReadDataByIdentifier (0x22) ─────────────────────────
         if sid == ServiceID.READ_DATA_BY_ID and len(payload) >= 3:
@@ -841,7 +841,7 @@ class MockTransport(AbstractTransport):
         from core.app_profile import profile
 
         sid = payload[0]
-        time.sleep(0.005)  # simulate realistic latency
+        time.sleep(0.001)  # minimal latency simulation
 
         # ── ReadDataByIdentifier (0x22) ─────────────────────────
         if sid == ServiceID.READ_DATA_BY_ID and len(payload) >= 3:
