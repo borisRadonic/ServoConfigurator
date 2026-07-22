@@ -1,4 +1,4 @@
-# ServoConfigurator — Application Profile
+# Device Configurator — Application Profile
 # =========================================
 # This file controls which features and transports are enabled.
 # Copy and rename for different deployment scenarios:
@@ -8,7 +8,7 @@
 #
 # The active config file is selected by:
 #   1. Command-line argument:  --config path/to/config.yaml
-#   2. Environment variable:   SERVOCONFIG_PROFILE=path/to/config.yaml
+#   2. Environment variable:   DEVICECONFIG_PROFILE=path/to/config.yaml
 #   3. Default:                app_config.yaml next to main.py
 
 app:
@@ -39,6 +39,9 @@ features:
     enabled:    true
     read_only:  false   # true = read parameters but disallow any writes
                         # Useful for monitoring / logging applications
+    show_tab:   true    # Show Parameters tab in main window
+    show_menu:  true    # Show "Read All Parameters" and F5 in Device menu
+                        # Set both false to completely hide parameter UI
 
   diagnostics:
     enabled:    true
@@ -101,7 +104,9 @@ ui:
   show_did_column: true # Show DID hex column in parameter table
   show_unit_column: true
   show_desc_column: true
-  parameter_json: "parameters.json"   # Default parameter definition file
+  parameter_json: "parameters.json"   # Active parameter definition file
+  # parameter_json: "parameters_example_foc.json"  # Full FOC example (66 params)
+  # Override on command line: python main.py --json parameters_example_foc.json
 
   config_management:
     enabled:    true

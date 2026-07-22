@@ -104,7 +104,8 @@ class MainWindow(QMainWindow):
         self._tabs.setDocumentMode(True)
         self.setCentralWidget(self._tabs)
 
-        if profile.features.parameters.enabled:
+        _params_feat = profile.features.parameters
+        if _params_feat.enabled and _params_feat.show_tab:
             self._param_panel = ParameterPanel(self._store)
             self._param_panel.refresh_requested.connect(self._read_all)
             self._tabs.addTab(self._param_panel, "⚙  Parameters")
@@ -186,6 +187,9 @@ class MainWindow(QMainWindow):
         self._act_read_all = QAction("Read All Parameters", self)
         self._act_read_all.setShortcut("F5")
         self._act_read_all.setEnabled(False)
+        self._act_read_all.setVisible(
+            profile.features.parameters.enabled and
+            profile.features.parameters.show_menu)
         self._act_read_all.triggered.connect(self._read_all)
         dm.addAction(self._act_read_all)
 
@@ -377,6 +381,8 @@ class MainWindow(QMainWindow):
     def _on_connected(self, transport: AbstractTransport):
         self._transport = transport
         self._device_address = getattr(transport, '_device_addr', None)
+        if self._config_panel:
+            self._config_panel.set_device_address(self._device_address)
 
         if self._client:
             self._client.shutdown()
@@ -436,6 +442,8 @@ class MainWindow(QMainWindow):
         if self._transport: self._transport.disconnect(); self._transport = None
         self._updater = None
         self._device_address = None
+        if self._config_panel:
+            self._config_panel.set_device_address(None)
         if self._diag_tab: self._diag_tab.set_transport(None)
         if self._fw_panel: self._fw_panel.set_updater(None)
 
@@ -581,8 +589,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"⚠ {msg}", 5000)
 
     def _about(self):
-        QMessageBox.about(self, "ServoConfigurator",
-            "<h3>ServoConfigurator</h3>"
+        QMessageBox.about(self, "Device Configurator",
+            "<h3>Device Configurator</h3>"
             "<p>UDS motor controller configuration and diagnostics tool.</p>"
             "<b>Transports:</b> Serial · CAN (PEAK) · TCP/IP · Mock<br>"
             "<b>Features:</b> Parameters · DTC · Session · Raw UDS · "

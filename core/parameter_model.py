@@ -155,7 +155,12 @@ class ParameterStore(QObject):
 
     def load_from_json(self, path: Union[str, Path]) -> None:
         with open(path, "r", encoding="utf-8") as f:
-            items = json.load(f)
+            data = json.load(f)
+        # Support both plain list and {"parameters": [...]} dict format
+        if isinstance(data, dict):
+            items = data.get("parameters", [])
+        else:
+            items = data
         for item in items:
             defn = ParameterDefinition.from_dict(item)
             self._definitions[defn.did] = defn

@@ -27,6 +27,7 @@ from core.parameter_model import ParameterStore
 from core.preset_manager import DiffEntry, Preset, PresetManager
 from core.write_history import WriteHistory
 from core.batch_writer import BatchWriter
+from gui.export_import_panel import ExportImportPanel
 
 log = logging.getLogger(__name__)
 
@@ -689,10 +690,14 @@ class ConfigPanel(QWidget):
         self._batch_panel   = BatchPanel(self._store, self._batch)
         self._history_panel = HistoryPanel(self._history)
 
-        self._tabs.addTab(self._presets_panel, "📋  Presets")
-        self._tabs.addTab(self._compare_panel, "⇆  Compare")
-        self._tabs.addTab(self._batch_panel,   "✏  Batch Write")
-        self._tabs.addTab(self._history_panel, "🕐  Write History")
+        self._export_import_panel = ExportImportPanel(self._store, self._batch)
+        self._export_import_panel.status_message.connect(self.statusMessage)
+
+        self._tabs.addTab(self._presets_panel,       "📋  Presets")
+        self._tabs.addTab(self._compare_panel,       "⇆  Compare")
+        self._tabs.addTab(self._batch_panel,         "✏  Batch Write")
+        self._tabs.addTab(self._history_panel,       "🕐  Write History")
+        self._tabs.addTab(self._export_import_panel, "⬆⬇  Export/Import")
         root.addWidget(self._tabs)
 
     def _wire_signals(self):
@@ -737,6 +742,10 @@ class ConfigPanel(QWidget):
         entry = self._history.redo(write_fn)
         if entry:
             self.statusMessage(f"Redo: {entry.name} = {entry.new_str}")
+
+    def set_device_address(self, addr) -> None:
+        """Called by main_window when connection changes."""
+        self._export_import_panel.set_device_address(addr)
 
     def statusMessage(self, msg: str):
         """Try to show in main window status bar."""

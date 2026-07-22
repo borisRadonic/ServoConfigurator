@@ -5,7 +5,7 @@ Loads app_config.yaml and exposes typed feature flags.
 
 Priority:
   1. --config CLI argument
-  2. SERVOCONFIG_PROFILE environment variable
+  2. DEVICECONFIG_PROFILE environment variable
   3. app_config.yaml next to main.py
   4. Built-in defaults (all features enabled)
 
@@ -52,6 +52,8 @@ class CANConfig:
 class ParameterFeature:
     enabled:   bool = True
     read_only: bool = False
+    show_tab:  bool = True
+    show_menu: bool = True
 
 
 @dataclass
@@ -183,7 +185,7 @@ def load_profile(path: Optional[Path] = None) -> AppProfile:
     """
     # Resolve path
     if path is None:
-        env = os.environ.get("SERVOCONFIG_PROFILE")
+        env = os.environ.get("DEVICECONFIG_PROFILE")
         if env:
             path = Path(env)
         else:
@@ -240,6 +242,8 @@ def load_profile(path: Optional[Path] = None) -> AppProfile:
     fp = raw.get("features", {}).get("parameters", {})
     p.features.parameters.enabled   = bool(_get(fp, "enabled",   default=True))
     p.features.parameters.read_only = bool(_get(fp, "read_only", default=False))
+    p.features.parameters.show_tab  = bool(_get(fp, "show_tab",  default=True))
+    p.features.parameters.show_menu = bool(_get(fp, "show_menu", default=True))
 
     # features.diagnostics
     fd = raw.get("features", {}).get("diagnostics", {})

@@ -53,7 +53,7 @@ def _configure_logging() -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="ServoConfigurator Motor Controller Configuration")
+    parser = argparse.ArgumentParser(description="Device Configurator Motor Controller Configuration")
     parser.add_argument("--json",    metavar="FILE", help="Parameter JSON file")
     parser.add_argument("--config",  metavar="FILE", help="App profile YAML (default: app_config.yaml)")
     args = parser.parse_args()
