@@ -59,7 +59,7 @@ class ParameterFeature:
 @dataclass
 class DiagnosticsFeature:
     enabled:   bool = True
-    dtc:       bool = True
+    dtc:       bool = False
     session:   bool = True
     ecu_info:  bool = True
     raw_uds:   bool = True
@@ -82,7 +82,7 @@ class ChangeAddressFeature:
 
 @dataclass
 class ConfigManagementFeature:
-    enabled: bool = True
+    enabled: bool = False
 
 
 @dataclass
@@ -199,7 +199,8 @@ def load_profile(path: Optional[Path] = None) -> AppProfile:
                     break
 
     if path is None or not path.exists():
-        log.info("No app_config.yaml found — using built-in defaults (all features enabled)")
+        log.warning("No app_config.yaml found — using built-in defaults. "
+                        "Some features (DTC, Configuration) are hidden by default.")
         return AppProfile(source="defaults")
 
     try:
