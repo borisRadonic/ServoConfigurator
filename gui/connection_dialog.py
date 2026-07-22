@@ -51,8 +51,8 @@ class _SerialPage(QWidget):
 class _CANPage(QWidget):
     def __init__(self):
         super().__init__()
-        from core.app_profile import profile as _profile
-        _can = _profile.can
+        import core.app_profile as _cdpm
+        _can = _cdpm.profile.can
         lay = QFormLayout(self); lay.setSpacing(10)
         self.iface = QComboBox()
         self.iface.addItems(["pcan","kvaser","socketcan","vector","ixxat"])

@@ -249,7 +249,7 @@ def load_profile(path: Optional[Path] = None) -> AppProfile:
     # features.diagnostics
     fd = raw.get("features", {}).get("diagnostics", {})
     p.features.diagnostics.enabled  = bool(_get(fd, "enabled",  default=True))
-    p.features.diagnostics.dtc      = bool(_get(fd, "dtc",      default=True))
+    p.features.diagnostics.dtc      = bool(_get(fd, "dtc",      default=False))
     p.features.diagnostics.session  = bool(_get(fd, "session",  default=True))
     p.features.diagnostics.ecu_info = bool(_get(fd, "ecu_info", default=True))
     p.features.diagnostics.raw_uds  = bool(_get(fd, "raw_uds",  default=True))
@@ -268,7 +268,9 @@ def load_profile(path: Optional[Path] = None) -> AppProfile:
 
     # features.config_management
     fcm = raw.get("features", {}).get("config_management", {})
-    p.features.config_management.enabled = bool(_get(fcm, "enabled", default=True))
+    p.features.config_management.enabled = bool(_get(fcm, "enabled", default=False))
+    log.info("config_management.enabled = %s (raw yaml: %s)",
+             p.features.config_management.enabled, fcm)
 
     # simulation
     sim = raw.get("simulation", {})

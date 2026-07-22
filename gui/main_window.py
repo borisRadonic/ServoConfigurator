@@ -25,12 +25,12 @@ from gui.ecu_info_panel import ECUInfoPanel
 from gui.config_panel import ConfigPanel
 from transport.transport import AbstractTransport, CANTransport
 from uds.client import UDSClient
-from core.app_profile import profile
+import core.app_profile as _profile_module
 
 log = logging.getLogger(__name__)
 
 # Tab indices are computed dynamically in MainWindow._build_ui()
-# because tabs are conditionally shown based on app_config.yaml profile.
+# because tabs are conditionally shown based on app_config.yaml _profile_module.profile.
 # Use self._tab_index("firmware") etc. instead of hardcoded constants.
 
 # NvField::DeviceAddress DID — from nvstore_field_map (offset 0x000A)
@@ -63,8 +63,8 @@ class _DiagTab(QWidget):
         layout.setSpacing(0)
         self._sub = QTabWidget()
         self._sub.setDocumentMode(True)
-        from core.app_profile import profile as _p
-        _df = _p.features.diagnostics
+        import core.app_profile as _pm
+        _df = _pm.profile.features.diagnostics
 
         if _df.dtc:
             self.dtc_panel = DTCPanel()
@@ -94,7 +94,7 @@ class _DiagTab(QWidget):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(profile.app.title)
+        self.setWindowTitle(_profile_module.profile.app.title)
         self.resize(1380, 880)
 
         self._store = ParameterStore(self)
@@ -118,7 +118,7 @@ class MainWindow(QMainWindow):
         self._tabs.setDocumentMode(True)
         self.setCentralWidget(self._tabs)
 
-        _params_feat = profile.features.parameters
+        _params_feat = _profile_module.profile.features.parameters
         if _params_feat.enabled and _params_feat.show_tab:
             self._param_panel = ParameterPanel(self._store)
             self._param_panel.refresh_requested.connect(self._read_all)
@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
         else:
             self._param_panel = None
 
-        if profile.features.diagnostics.enabled:
+        if _profile_module.profile.features.diagnostics.enabled:
             self._diag_tab = _DiagTab()
             self._tabs.addTab(self._diag_tab, "🔍  Diagnostics")
             self._tab_labels["diag"] = "🔍  Diagnostics"
@@ -135,7 +135,7 @@ class MainWindow(QMainWindow):
             self._diag_tab = None
 
         # Configuration Management tab
-        if profile.features.config_management.enabled:
+        if _profile_module.profile.features.config_management.enabled:
             self._config_panel = ConfigPanel(self._store)
             self._config_panel.write_parameter.connect(self._on_config_write)
             self._tabs.addTab(self._config_panel, "⚙  Configuration")
@@ -143,7 +143,7 @@ class MainWindow(QMainWindow):
         else:
             self._config_panel = None
 
-        if profile.features.firmware.enabled:
+        if _profile_module.profile.features.firmware.enabled:
             self._fw_panel = FirmwarePanel()
             self._fw_panel.upload_started.connect(self._on_upload_started)
             self._fw_panel.upload_finished.connect(self._on_upload_finished)
@@ -193,7 +193,7 @@ class MainWindow(QMainWindow):
         self._act_scan = QAction("🔍  Scan CAN Bus for Devices…", self)
         self._act_scan.setShortcut("Ctrl+Shift+S")
         self._act_scan.triggered.connect(self._show_scanner)
-        self._act_scan.setVisible(profile.features.device_scanner.enabled)
+        self._act_scan.setVisible(_profile_module.profile.features.device_scanner.enabled)
         dm.addAction(self._act_scan)
 
         dm.addSeparator()
@@ -202,22 +202,22 @@ class MainWindow(QMainWindow):
         self._act_read_all.setShortcut("F5")
         self._act_read_all.setEnabled(False)
         self._act_read_all.setVisible(
-            profile.features.parameters.enabled and
-            profile.features.parameters.show_menu)
+            _profile_module.profile.features.parameters.enabled and
+            _profile_module.profile.features.parameters.show_menu)
         self._act_read_all.triggered.connect(self._read_all)
         dm.addAction(self._act_read_all)
 
         self._act_read_dtc = QAction("Read DTCs", self)
         self._act_read_dtc.setShortcut("F6")
         self._act_read_dtc.setEnabled(False)
-        self._act_read_dtc.setVisible(profile.features.diagnostics.dtc)
+        self._act_read_dtc.setVisible(_profile_module.profile.features.diagnostics.dtc)
         self._act_read_dtc.triggered.connect(self._quick_read_dtc)
         dm.addAction(self._act_read_dtc)
 
         self._act_read_ecu = QAction("Read ECU Info", self)
         self._act_read_ecu.setShortcut("F7")
         self._act_read_ecu.setEnabled(False)
-        self._act_read_ecu.setVisible(profile.features.diagnostics.ecu_info)
+        self._act_read_ecu.setVisible(_profile_module.profile.features.diagnostics.ecu_info)
         self._act_read_ecu.triggered.connect(self._quick_read_ecu)
         dm.addAction(self._act_read_ecu)
 
@@ -227,7 +227,7 @@ class MainWindow(QMainWindow):
         self._act_change_addr.setEnabled(False)
         self._act_change_addr.triggered.connect(self._change_device_address)
         self._act_change_addr.setVisible(
-            profile.features.change_device_address.enabled)
+            _profile_module.profile.features.change_device_address.enabled)
         dm.addAction(self._act_change_addr)
 
         self._act_ecu_reset = QAction("ECU Reset (Hard)", self)
