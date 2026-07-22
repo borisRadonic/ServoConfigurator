@@ -109,4 +109,4 @@ ui:
   # Override on command line: python main.py --json parameters_example_foc.json
 
   config_management:
-    enabled:    true
+    enabled:    false   # hidden by default
