@@ -63,18 +63,32 @@ class _DiagTab(QWidget):
         layout.setSpacing(0)
         self._sub = QTabWidget()
         self._sub.setDocumentMode(True)
-        self.dtc_panel     = DTCPanel()
-        self.session_panel = SessionPanel()
-        self.ecu_panel     = ECUInfoPanel()
-        self._sub.addTab(self.dtc_panel,     "🔴  DTC")
-        self._sub.addTab(self.session_panel, "🔧  Session / Raw UDS")
-        self._sub.addTab(self.ecu_panel,     "ℹ  ECU Info")
+        from core.app_profile import profile as _p
+        _df = _p.features.diagnostics
+
+        if _df.dtc:
+            self.dtc_panel = DTCPanel()
+            self._sub.addTab(self.dtc_panel, "🔴  DTC")
+        else:
+            self.dtc_panel = None
+
+        if _df.session:
+            self.session_panel = SessionPanel()
+            self._sub.addTab(self.session_panel, "🔧  Session / Raw UDS")
+        else:
+            self.session_panel = None
+
+        if _df.ecu_info:
+            self.ecu_panel = ECUInfoPanel()
+            self._sub.addTab(self.ecu_panel, "ℹ  ECU Info")
+        else:
+            self.ecu_panel = None
         layout.addWidget(self._sub)
 
     def set_transport(self, transport):
-        self.dtc_panel.set_transport(transport)
-        self.session_panel.set_transport(transport)
-        self.ecu_panel.set_transport(transport)
+        if self.dtc_panel:     self.dtc_panel.set_transport(transport)
+        if self.session_panel: self.session_panel.set_transport(transport)
+        if self.ecu_panel:     self.ecu_panel.set_transport(transport)
 
 
 class MainWindow(QMainWindow):
@@ -196,12 +210,14 @@ class MainWindow(QMainWindow):
         self._act_read_dtc = QAction("Read DTCs", self)
         self._act_read_dtc.setShortcut("F6")
         self._act_read_dtc.setEnabled(False)
+        self._act_read_dtc.setVisible(profile.features.diagnostics.dtc)
         self._act_read_dtc.triggered.connect(self._quick_read_dtc)
         dm.addAction(self._act_read_dtc)
 
         self._act_read_ecu = QAction("Read ECU Info", self)
         self._act_read_ecu.setShortcut("F7")
         self._act_read_ecu.setEnabled(False)
+        self._act_read_ecu.setVisible(profile.features.diagnostics.ecu_info)
         self._act_read_ecu.triggered.connect(self._quick_read_ecu)
         dm.addAction(self._act_read_ecu)
 
@@ -398,7 +414,8 @@ class MainWindow(QMainWindow):
         self._client.parameter_written.connect(self._on_parameter_written_history)
 
         if self._diag_tab: self._diag_tab.set_transport(transport)
-        if self._diag_tab: self._diag_tab.session_panel.session_changed.connect(self._on_session_changed)
+        if self._diag_tab and self._diag_tab.session_panel:
+            self._diag_tab.session_panel.session_changed.connect(self._on_session_changed)
 
         from uds.firmware_update import FirmwareUpdater
         self._updater = FirmwareUpdater(transport, parent=self)
@@ -468,17 +485,20 @@ class MainWindow(QMainWindow):
             self._client.read_all_parameters()
 
     def _quick_read_dtc(self):
-        if not self._diag_tab: return
+        if not self._diag_tab or not self._diag_tab.dtc_panel: return
         diag_idx = self._tab_index("diag")
         if diag_idx >= 0: self._tabs.setCurrentIndex(diag_idx)
         self._diag_tab._sub.setCurrentIndex(0)
         self._diag_tab.dtc_panel._read_dtcs()
 
     def _quick_read_ecu(self):
-        if not self._diag_tab: return
+        if not self._diag_tab or not self._diag_tab.ecu_panel: return
         diag_idx = self._tab_index("diag")
         if diag_idx >= 0: self._tabs.setCurrentIndex(diag_idx)
-        self._diag_tab._sub.setCurrentIndex(2)
+        for i in range(self._diag_tab._sub.count()):
+            if "ECU" in self._diag_tab._sub.tabText(i):
+                self._diag_tab._sub.setCurrentIndex(i)
+                break
         self._diag_tab.ecu_panel._read_all()
 
     def _change_device_address(self):
@@ -558,6 +578,7 @@ class MainWindow(QMainWindow):
                 log.error("ECU reset: %s", e)
 
     def _on_session_changed(self, sess: int):
+        if not self._diag_tab or not self._diag_tab.session_panel: return
         from gui.session_panel import SESSION_NAMES
         name = SESSION_NAMES.get(sess, f"0x{sess:02X}")
         colors = {0x01: "#6C7086", 0x02: "#F38BA8", 0x03: "#FAB387"}
@@ -593,7 +614,7 @@ class MainWindow(QMainWindow):
             "<h3>Device Configurator</h3>"
             "<p>UDS motor controller configuration and diagnostics tool.</p>"
             "<b>Transports:</b> Serial · CAN (PEAK) · TCP/IP · Mock<br>"
-            "<b>Features:</b> Parameters · DTC · Session · Raw UDS · "
+            "<b>Features:</b> Parameters · Diagnostics · "
             "ECU Info · Firmware · Device Scanner")
 
     def closeEvent(self, event):

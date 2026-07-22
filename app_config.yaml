@@ -45,7 +45,7 @@ features:
 
   diagnostics:
     enabled:    true
-    dtc:        true    # DTC read/clear panel
+    dtc:        false   # DTC read/clear panel (default: hidden)
     session:    true    # Session control + Raw UDS console
     ecu_info:   true    # ECU Info (identification DIDs)
     raw_uds:    true    # Raw UDS console (inside session panel)
